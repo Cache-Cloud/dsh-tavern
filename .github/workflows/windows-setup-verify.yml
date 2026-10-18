@@ -11,7 +11,7 @@ on:
         default: https://github.com/flizzywine/dsh-tavern/releases/download/v2.6/DSH-Tavern-Desktop-2.0.13-x64-Setup8.exe
       setup_sha256:
         description: Expected SHA-256
-        default: 13c362eacb472dfae650ba6a7b91a935232b90270517a24d81b9dc43dbd0e5dc
+        default: f39a772cc0013d6f0de56d894f23b940f2017afd9a54cba06ae179e78c2b980d
 
 jobs:
   verify:

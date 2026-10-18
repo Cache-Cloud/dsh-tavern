@@ -121,8 +121,6 @@
 
 **方式一：一键安装包（推荐）**
 
-> **安装包正在重新打包**：旧安装包里的安装脚本仍指向 `main`，会装上需要 DSH 0.2.1 的新版本而失败。新包发布前请用下面的方式二或方式三。
-
 **[下载 Windows 安装包](https://github.com/flizzywine/dsh-tavern/releases/download/v2.6/DSH-Tavern-Desktop-2.0.13-x64-Setup8.exe)**（x64），双击运行，保持联网，按提示完成。以后从桌面「DSH Tavern」快捷方式打开，无需另装 Node.js 或 DSH Desktop。[图文教程 →](https://flizzywine.github.io/dsh-tavern/#a02--section-2)
 
 **方式二：借助 DSH Desktop**
