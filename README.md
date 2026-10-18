@@ -113,19 +113,15 @@
 
 ## 快速开始
 
-DSH Tavern 有两个版本，按你的 DSH 版本选择：
+这是 DSH Tavern **稳定版**，适配 **DSH 0.1.5-rc.2**（DSH Desktop 2.0.13、DSHA 0.1.5-rc2），在 `stable` 分支维护，只修严重问题；安装和应用内更新都跟随 `stable` 分支。
 
-| | 稳定版 | 测试版 |
-| --- | --- | --- |
-| 适配 DSH | **仅 0.1.5-rc.2** | **0.2.1-rc.2**（手机 DSHA v0.2.0-rc2 内置的 0.2.0-rc.2 也可用） |
-| 安装方式 | 一键安装包，见下方 | 装在你自己的官方 DeepSeek Harness、DSHA 或独立命令行上，不提供安装包 |
-| 安装说明 | 本页下方 | [测试版安装方法 →](https://github.com/flizzywine/dsh-tavern/blob/0.2.1%E7%89%88%E6%9C%AC/README-0.2.1-rc.2.md) · [测试版说明](https://github.com/flizzywine/dsh-tavern/releases/tag/v2.7.0-dsh0.2.1-test.2) |
-
-测试版成熟后将取代稳定版。以下是**稳定版**安装方法。
+适配 DSH 0.2.1 的当前版本在 [`main` 分支](https://github.com/flizzywine/dsh-tavern#快速开始)，新功能（DSH 人物卡、插件接口第 3 版等）只在那里提供。
 
 ### Windows
 
 **方式一：一键安装包（推荐）**
+
+> **安装包正在重新打包**：旧安装包里的安装脚本仍指向 `main`，会装上需要 DSH 0.2.1 的新版本而失败。新包发布前请用下面的方式二或方式三。
 
 **[下载 Windows 安装包](https://github.com/flizzywine/dsh-tavern/releases/download/v2.6/DSH-Tavern-Desktop-2.0.13-x64-Setup8.exe)**（x64），双击运行，保持联网，按提示完成。以后从桌面「DSH Tavern」快捷方式打开，无需另装 Node.js 或 DSH Desktop。[图文教程 →](https://flizzywine.github.io/dsh-tavern/#a02--section-2)
 
@@ -169,7 +165,9 @@ curl -fsSL https://cdn.jsdelivr.net/gh/flizzywine/dsh-tavern@stable/install.sh |
 
 **方式一：一键安装（推荐）**
 
-**[下载 Android APK](https://github.com/flizzywine/dsh-tavern/releases/download/v2.1/dsh-tavern-android-release.apk)**（Android 11+、ARM64），安装后打开，点击启动，首次保持联网等待自动安装完成。[图文教程 →](https://flizzywine.github.io/dsh-tavern/#a02--section-5)
+> **APK 暂不可用**：现有 APK 包里的安装脚本仍指向 `main`，会装上需要 DSH 0.2.1 的新版本而失败，修复版重新打包前请用下面的方式二（DSHA）。
+
+旧版 APK（v2.1，Android 11+、ARM64）的下载已暂停。
 
 **方式二：借助 DSHA**
 
