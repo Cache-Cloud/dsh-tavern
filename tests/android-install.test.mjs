@@ -104,7 +104,7 @@ test('Android 入口在 Tavern 离线时仍可启动更新或修复', async (t) 
   await writeFile(path.join(appDir, '.dsh-tavern-release.json'), JSON.stringify({ commit: currentCommit }))
   t.mock.method(globalThis, 'fetch', async (url) => {
     const value = String(url).endsWith('/package.json') ? { version: '1.1.0' }
-      : String(url).endsWith('/commits/main') ? { sha: latestCommit }
+      : String(url).endsWith('/commits/stable') ? { sha: latestCommit }
       : String(url).endsWith(`/compare/${currentCommit}...${latestCommit}`) ? { status: 'ahead', base_commit: { sha: currentCommit } }
       : assert.fail(`unexpected request: ${url}`)
     return new Response(JSON.stringify(value), { headers: { 'Content-Type': 'application/json' } })
@@ -268,7 +268,7 @@ test('Android setup 通过同一命令完成首次安装和后续更新', async 
     await writeFile(path.join(source, file), 'documentation image')
   }
   for (const args of [
-    ['init', '-b', 'main'],
+    ['init', '-b', 'stable'],
     ['config', 'user.email', 'test@example.com'],
     ['config', 'user.name', 'Test'],
     ['add', '.'],
@@ -349,7 +349,7 @@ test('Git 下载失败时通过 tarball 安装更新，保留旧数据并在安�
   const dshHome = path.join(directory, 'dsh-home')
   const archive = path.join(directory, 'dsh-tavern.tar.gz')
   const sourceParent = path.join(directory, 'archive-source')
-  const source = path.join(sourceParent, 'dsh-tavern-main')
+  const source = path.join(sourceParent, 'dsh-tavern-stable')
 
   async function writeArchive(version, installExit = 0) {
     await rm(sourceParent, { recursive: true, force: true })
@@ -364,7 +364,7 @@ test('Git 下载失败时通过 tarball 安装更新，保留旧数据并在安�
       await writeFile(path.join(source, file), 'documentation image')
     }
     if (version === 'v1') await writeFile(path.join(source, 'removed-in-v2.txt'), 'old\n', 'utf8')
-    const packed = spawnSync('tar', ['-czf', archive, '-C', sourceParent, 'dsh-tavern-main'], { encoding: 'utf8' })
+    const packed = spawnSync('tar', ['-czf', archive, '-C', sourceParent, 'dsh-tavern-stable'], { encoding: 'utf8' })
     assert.equal(packed.status, 0, packed.stderr)
   }
 
@@ -411,7 +411,7 @@ test('DSHA 升级留下的空依赖目录可安全重装，真实用户文件仍
   await writeFile(path.join(source, 'package.json'), JSON.stringify({ name: 'dsh-profile-tavern' }), 'utf8')
   await writeFile(path.join(source, 'bin', 'dsh-tavern.mjs'), '', 'utf8')
   await writeFile(path.join(source, 'android', 'install.sh'), '#!/usr/bin/env bash\n', 'utf8')
-  for (const args of [['init', '-b', 'main'], ['config', 'user.email', 'test@example.com'], ['config', 'user.name', 'Test'], ['add', '.'], ['commit', '-m', 'initial']]) {
+  for (const args of [['init', '-b', 'stable'], ['config', 'user.email', 'test@example.com'], ['config', 'user.name', 'Test'], ['add', '.'], ['commit', '-m', 'initial']]) {
     const result = spawnSync('git', args, { cwd: source, encoding: 'utf8' })
     assert.equal(result.status, 0, result.stderr)
   }
@@ -444,7 +444,7 @@ test('Git 仓库 fetch 失败时切换为 tarball 更新', async (t) => {
   const source = path.join(directory, 'git-source')
   const dshHome = path.join(directory, 'dsh-home')
   const archiveParent = path.join(directory, 'archive-source')
-  const archiveSource = path.join(archiveParent, 'dsh-tavern-main')
+  const archiveSource = path.join(archiveParent, 'dsh-tavern-stable')
   const archive = path.join(directory, 'dsh-tavern.tar.gz')
   const setupPath = new URL('../android/setup.sh', import.meta.url).pathname
   const appDir = path.join(dshHome, 'apps', 'dsh-tavern')
@@ -458,11 +458,11 @@ test('Git 仓库 fetch 失败时切换为 tarball 更新', async (t) => {
   }
   await writeFile(path.join(source, 'version.txt'), 'git-v1\n', 'utf8')
   await writeFile(path.join(archiveSource, 'version.txt'), 'tarball-v2\n', 'utf8')
-  for (const args of [['init', '-b', 'main'], ['config', 'user.email', 'test@example.com'], ['config', 'user.name', 'Test'], ['add', '.'], ['commit', '-m', 'initial']]) {
+  for (const args of [['init', '-b', 'stable'], ['config', 'user.email', 'test@example.com'], ['config', 'user.name', 'Test'], ['add', '.'], ['commit', '-m', 'initial']]) {
     const result = spawnSync('git', args, { cwd: source, encoding: 'utf8' })
     assert.equal(result.status, 0, result.stderr)
   }
-  const packed = spawnSync('tar', ['-czf', archive, '-C', archiveParent, 'dsh-tavern-main'], { encoding: 'utf8' })
+  const packed = spawnSync('tar', ['-czf', archive, '-C', archiveParent, 'dsh-tavern-stable'], { encoding: 'utf8' })
   assert.equal(packed.status, 0, packed.stderr)
 
   const baseEnvironment = { ...process.env, DSH_HOME: dshHome, DSH_TAVERN_REPOSITORY: source, DSH_TAVERN_TARBALL_URL: `file://${archive}` }

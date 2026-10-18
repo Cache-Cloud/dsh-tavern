@@ -1,9 +1,9 @@
 // Commands mirror docs/installation.md; tests guard against drift.
 export const installCommands = {
-  desktopWindows: "$env:DSH_TAVERN_HOST='desktop'; $tavernInstaller=[Text.Encoding]::UTF8.GetString((New-Object Net.WebClient).DownloadData('https://cdn.jsdelivr.net/gh/flizzywine/dsh-tavern@main/install.ps1')); Invoke-Expression $tavernInstaller",
-  desktopMac: 'curl -fsSL https://cdn.jsdelivr.net/gh/flizzywine/dsh-tavern@main/install.sh | DSH_TAVERN_HOST=desktop sh',
-  cliWindows: "$env:DSH_TAVERN_HOST='cli'; $tavernInstaller=[Text.Encoding]::UTF8.GetString((New-Object Net.WebClient).DownloadData('https://cdn.jsdelivr.net/gh/flizzywine/dsh-tavern@main/install.ps1')); Invoke-Expression $tavernInstaller",
-  cliUnix: 'curl -fsSL https://cdn.jsdelivr.net/gh/flizzywine/dsh-tavern@main/install.sh | DSH_TAVERN_HOST=cli sh',
+  desktopWindows: "$env:DSH_TAVERN_HOST='desktop'; $tavernInstaller=[Text.Encoding]::UTF8.GetString((New-Object Net.WebClient).DownloadData('https://cdn.jsdelivr.net/gh/flizzywine/dsh-tavern@stable/install.ps1')); Invoke-Expression $tavernInstaller",
+  desktopMac: 'curl -fsSL https://cdn.jsdelivr.net/gh/flizzywine/dsh-tavern@stable/install.sh | DSH_TAVERN_HOST=desktop sh',
+  cliWindows: "$env:DSH_TAVERN_HOST='cli'; $tavernInstaller=[Text.Encoding]::UTF8.GetString((New-Object Net.WebClient).DownloadData('https://cdn.jsdelivr.net/gh/flizzywine/dsh-tavern@stable/install.ps1')); Invoke-Expression $tavernInstaller",
+  cliUnix: 'curl -fsSL https://cdn.jsdelivr.net/gh/flizzywine/dsh-tavern@stable/install.sh | DSH_TAVERN_HOST=cli sh',
   // Pin the bootstrap itself so jsDelivr cannot serve an older @main script.
   // The bootstrap still installs or updates the application from current main.
   android: 'node -e "fetch(\'https://cdn.jsdelivr.net/gh/flizzywine/dsh-tavern@69d74f5/android/setup.sh\').then(async r=>{if(!r.ok)throw Error(\'HTTP \'+r.status);require(\'fs\').writeFileSync(\'/tmp/dsh-tavern-setup.sh\',await r.text())}).then(()=>{const r=require(\'child_process\').spawnSync(\'bash\',[\'/tmp/dsh-tavern-setup.sh\'],{stdio:\'inherit\'});process.exit(r.status??1)}).catch(e=>{console.error(e);process.exit(1)})"',
