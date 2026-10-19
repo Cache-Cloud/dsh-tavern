@@ -126,3 +126,19 @@ test('后续切换预设不改变旧替换的归属，伪造恢复内容仍被�
   appendSessionEvent(session, 'assistant/message', {...original.data, message: {...original.data.message, content: [{type: 'text', text: '不是原文'}]}}, {surfaceOp: {op: 'replace', start: edit.seq, end: edit.seq}, sourceEventSeqs: [edit.seq, original.seq]})
   assert.throws(() => ctx.tokenMeter.measure(session), /no matching step\/start/)
 })
+
+test('正文走工具调用：回合结束后追加的正文投影也能计量，压缩不再卡住（#263）', native, async t => {
+  const { ctx, Session } = await harness(t)
+  const session = Session.create('story-tool', [], { ...Session.create('story-tool').header, agentPreset: 'tavern' })
+  completed(session, { inputTokens: 10, outputTokens: 10 })
+  const callSeq = session.surface.nodes.at(-1)
+  // The tool already concluded the turn: the projection is appended outside any step, then folded.
+  const owned = { kind: 'model', provider: 'dsh-tavern', model: 'reply-projection' }
+  const reply = { id: 'projected', role: 'assistant', content: [{ type: 'text', text: '提交的正文。'.repeat(200) }], source: owned }
+  const shown = appendSessionEvent(session, 'assistant/message', { turn: 1, step: 1, message: reply }, { surfaceOp: 'append', sourceEventSeqs: [] })
+  const shownSeq = typeof shown === 'number' ? shown : shown.seq
+  appendSessionEvent(session, 'assistant/message', { turn: 1, step: 1, message: reply }, { surfaceOp: { op: 'replace', start: callSeq, end: shownSeq }, sourceEventSeqs: [callSeq, shownSeq] })
+  assert.throws(() => ctx.tokenMeter.measure(session), /assistant\/message.*no matching step\/start/)
+  t.after(installTavernTokenMeter(ctx.tokenMeter))
+  assert.ok(ctx.tokenMeter.measure(session).totalTokens > 0)
+})

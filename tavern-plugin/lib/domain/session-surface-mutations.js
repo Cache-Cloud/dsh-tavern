@@ -74,6 +74,10 @@ export function isTavernSurfaceEdit(session, event, priorNodes, resolvePreset) {
   const owned = source.provider === 'dsh-tavern' && source.model === 'reply-projection'
   const replacement = event.surfaceOp
   const refs = event.sourceEventSeqs
+  // A story submitted through the tool is projected after the turn concluded, so this
+  // append lies outside any step; the host meter rejects such an assistant message and
+  // every later compaction fails (#263). It carries no provider usage: count it as injected.
+  if (owned && replacement === 'append' && event.data?.usage === undefined) return true
   if (replacement?.op !== 'replace' || !Array.isArray(refs) || refs.length === 0) return false
   if (!owned) {
     // Ordinary model replies never need a history lookup. The meter supplies a
