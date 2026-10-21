@@ -60,7 +60,12 @@ jobs:
   windows-install:
     runs-on: windows-latest
     env:
+      # Force the installers past their default main Git/CDN sources so the
+      # explicit archive URL below is the PR snapshot under test.
+      DSH_TAVERN_GIT_URL: file:///dsh-tavern-ci-no-git
+      DSH_TAVERN_CDN_METADATA_URL: data:,invalid
       DSH_TAVERN_ARCHIVE_URL: https://github.com/${{ github.repository }}/archive/${{ github.sha }}.zip
+      DSH_TAVERN_TARGET_COMMIT: ${{ github.sha }}
       DSH_TAVERN_NO_OPEN: 1
       # The installers default to the desktop host (DeepSeek Harness / DSH NEXT), absent on runners.
       DSH_TAVERN_HOST: cli
@@ -73,12 +78,30 @@ jobs:
         env:
           DSH_TAVERN_CLI_HOME: ${{ runner.temp }}\赵 的酒馆\dsh-tavern-test
         run: .\install.ps1
+      - name: Assert bundled image plugin install
+        shell: pwsh
+        env:
+          DSH_TAVERN_CLI_HOME: ${{ runner.temp }}\赵 的酒馆\dsh-tavern-test
+        run: |
+          $app = "$env:DSH_TAVERN_CLI_HOME\apps\dsh-tavern"
+          $sourceMarker = Get-Content "$app\tavern-plugin\packages\dsh-tavern-image-bundled\BUNDLED-VERSION.json" -Raw | ConvertFrom-Json
+          $sourcePackage = Get-Content "$app\tavern-plugin\packages\dsh-tavern-image-bundled\package.json" -Raw | ConvertFrom-Json
+          if ($sourceMarker.name -ne 'dsh-tavern-image' -or $sourceMarker.version -ne '2.9.1') { throw 'Installed source snapshot does not contain the expected bundled image plugin marker' }
+          if ($sourcePackage.name -ne 'dsh-tavern-image' -or $sourcePackage.version -ne '2.9.1') { throw 'Installed source snapshot package is not dsh-tavern-image 2.9.1' }
+          $plugin = "$env:DSH_TAVERN_CLI_HOME\profile-data\tavern\data\plugins\dsh-tavern-image"
+          $installed = Get-Content "$plugin\package.json" -Raw | ConvertFrom-Json
+          if ($installed.name -ne 'dsh-tavern-image' -or $installed.version -ne '2.9.1') { throw 'Bundled image plugin was not installed at the Tavern data plugin path with the expected name/version' }
       - name: Update, preserve data and stop Tavern
         shell: pwsh
         env:
           DSH_TAVERN_CLI_HOME: ${{ runner.temp }}\赵 的酒馆\dsh-tavern-test
         run: |
           $app = "$env:DSH_TAVERN_CLI_HOME\apps\dsh-tavern"
+          $plugin = "$env:DSH_TAVERN_CLI_HOME\profile-data\tavern\data\plugins\dsh-tavern-image"
+          $sentinel = "$plugin\ci-private-sentinel.txt"
+          $sentinelBytes = [System.Text.Encoding]::UTF8.GetBytes('private plugin data; preserve across Tavern update')
+          [IO.File]::WriteAllBytes($sentinel, $sentinelBytes)
+          $sentinelHash = (Get-FileHash -LiteralPath $sentinel -Algorithm SHA256).Hash
           New-Item -ItemType Directory -Force "$app\data\cards" | Out-Null
           Set-Content "$app\data\cards\preserve-check.json" '{"preserved":true}'
           $firstPid = (Get-Content "$env:DSH_TAVERN_CLI_HOME\logs\tavern.pid.json" | ConvertFrom-Json).pid
@@ -87,6 +110,10 @@ jobs:
           $secondPid = (Get-Content "$env:DSH_TAVERN_CLI_HOME\logs\tavern.pid.json" | ConvertFrom-Json).pid
           if ($firstPid -eq $secondPid) { throw 'Update did not restart Tavern' }
           if (-not (Test-Path "$app\data\cards\preserve-check.json")) { throw 'Update removed user data' }
+          if (-not (Test-Path -LiteralPath "$plugin\package.json")) { throw 'Update removed the bundled image plugin' }
+          $updatedPlugin = Get-Content "$plugin\package.json" -Raw | ConvertFrom-Json
+          if ($updatedPlugin.name -ne 'dsh-tavern-image' -or $updatedPlugin.version -ne '2.9.1') { throw 'Update changed the bundled image plugin identity/version' }
+          if ((Get-FileHash -LiteralPath $sentinel -Algorithm SHA256).Hash -ne $sentinelHash) { throw 'Update modified private plugin data' }
           $shim = "$env:DSH_TAVERN_CLI_HOME\bin\dsh-tavern.cmd"
           & $shim --help
           if ($LASTEXITCODE -ne 0) { throw 'Generated command shim failed' }
@@ -112,7 +139,12 @@ jobs:
   unix-install:
     runs-on: ubuntu-latest
     env:
+      # Force the installers past their default main Git/CDN sources so the
+      # explicit archive URL below is the PR snapshot under test.
+      DSH_TAVERN_GIT_URL: file:///dsh-tavern-ci-no-git
+      DSH_TAVERN_CDN_METADATA_URL: data:,invalid
       DSH_TAVERN_ARCHIVE_URL: https://github.com/${{ github.repository }}/archive/${{ github.sha }}.tar.gz
+      DSH_TAVERN_TARGET_COMMIT: ${{ github.sha }}
       DSH_TAVERN_NO_OPEN: 1
       DSH_TAVERN_HOST: cli
     steps:
@@ -124,11 +156,37 @@ jobs:
         env:
           DSH_TAVERN_CLI_HOME: ${{ runner.temp }}/dsh-tavern-test
         run: sh ./install.sh
+      - name: Assert bundled image plugin install
+        env:
+          DSH_TAVERN_CLI_HOME: ${{ runner.temp }}/dsh-tavern-test
+        run: |
+          app="$DSH_TAVERN_CLI_HOME/apps/dsh-tavern"
+          node --input-type=module - "$app" "$DSH_TAVERN_CLI_HOME" <<'NODE'
+          import assert from 'node:assert/strict'
+          import { readFile } from 'node:fs/promises'
+          import path from 'node:path'
+          const [app, home] = process.argv.slice(2)
+          const read = async file => JSON.parse(await readFile(file, 'utf8'))
+          const bundled = path.join(app, 'tavern-plugin/packages/dsh-tavern-image-bundled')
+          const marker = await read(path.join(bundled, 'BUNDLED-VERSION.json'))
+          const sourcePackage = await read(path.join(bundled, 'package.json'))
+          assert.equal(marker.name, 'dsh-tavern-image')
+          assert.equal(marker.version, '2.9.1')
+          assert.equal(sourcePackage.name, 'dsh-tavern-image')
+          assert.equal(sourcePackage.version, '2.9.1')
+          const installed = await read(path.join(home, 'profile-data/tavern/data/plugins/dsh-tavern-image/package.json'))
+          assert.equal(installed.name, 'dsh-tavern-image')
+          assert.equal(installed.version, '2.9.1')
+          NODE
       - name: Update, preserve data and stop Tavern
         env:
           DSH_TAVERN_CLI_HOME: ${{ runner.temp }}/dsh-tavern-test
         run: |
           app="$DSH_TAVERN_CLI_HOME/apps/dsh-tavern"
+          plugin="$DSH_TAVERN_CLI_HOME/profile-data/tavern/data/plugins/dsh-tavern-image"
+          sentinel="$plugin/ci-private-sentinel.txt"
+          printf '%s' 'private plugin data; preserve across Tavern update' >"$sentinel"
+          sentinel_hash=$(sha256sum "$sentinel" | cut -d ' ' -f 1)
           mkdir -p "$app/data/cards"
           printf '%s\n' '{"preserved":true}' >"$app/data/cards/preserve-check.json"
           first_pid=$(node -e "console.log(require('$DSH_TAVERN_CLI_HOME/logs/tavern.pid.json').pid)")
@@ -136,5 +194,14 @@ jobs:
           second_pid=$(node -e "console.log(require('$DSH_TAVERN_CLI_HOME/logs/tavern.pid.json').pid)")
           test "$first_pid" != "$second_pid"
           test -f "$app/data/cards/preserve-check.json"
+          test -f "$plugin/package.json"
+          node --input-type=module - "$plugin/package.json" <<'NODE'
+          import assert from 'node:assert/strict'
+          import { readFile } from 'node:fs/promises'
+          const pkg = JSON.parse(await readFile(process.argv[2], 'utf8'))
+          assert.equal(pkg.name, 'dsh-tavern-image')
+          assert.equal(pkg.version, '2.9.1')
+          NODE
+          test "$(sha256sum "$sentinel" | cut -d ' ' -f 1)" = "$sentinel_hash"
           node "$app/bin/dsh-tavern.mjs" status
           node "$app/bin/dsh-tavern.mjs" stop
