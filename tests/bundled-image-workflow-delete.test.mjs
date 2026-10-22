@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { cp, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -129,6 +129,34 @@ test('拒绝工作流目录外路径并保留配置', async t => {
   const result = await deleteWorkflow({ ...f, id: 'remove-me' })
   assert.equal(result.status, 400)
   assert.equal(await readFile(outside, 'utf8'), 'keep')
+  assert.deepEqual(f.config.workflows.map(item => item.id), ['remove-me', 'fallback'])
+  assert.equal(f.persisted.length, 0)
+})
+
+test('接受指向 workflows 真实目录的 symlink 父目录别名', async t => {
+  const f = await fixture(t)
+  const aliasDir = path.join(path.dirname(f.workflowsDir), 'workflows-alias')
+  await symlink(f.workflowsDir, aliasDir, process.platform === 'win32' ? 'junction' : 'dir')
+  f.config.workflows[0].file = path.join(aliasDir, 'remove-me.json')
+
+  const result = await deleteWorkflow({ ...f, id: 'remove-me' })
+  assert.equal(result.status, 200)
+  assert.deepEqual(f.config.workflows.map(item => item.id), ['fallback'])
+  assert.deepEqual(await readdir(f.workflowsDir), ['fallback.json'])
+})
+
+test('拒绝指向 workflows 外部的 symlink 父目录并保留配置和文件', async t => {
+  const f = await fixture(t)
+  const outsideDir = path.join(path.dirname(f.workflowsDir), 'outside')
+  const aliasDir = path.join(f.workflowsDir, 'outside-alias')
+  await mkdir(outsideDir)
+  await writeFile(path.join(outsideDir, 'keep.json'), 'keep')
+  await symlink(outsideDir, aliasDir, process.platform === 'win32' ? 'junction' : 'dir')
+  f.config.workflows[0].file = path.join(aliasDir, 'keep.json')
+
+  const result = await deleteWorkflow({ ...f, id: 'remove-me' })
+  assert.equal(result.status, 400)
+  assert.equal(await readFile(path.join(outsideDir, 'keep.json'), 'utf8'), 'keep')
   assert.deepEqual(f.config.workflows.map(item => item.id), ['remove-me', 'fallback'])
   assert.equal(f.persisted.length, 0)
 })
