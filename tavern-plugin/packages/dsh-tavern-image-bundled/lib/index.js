@@ -1655,7 +1655,7 @@ function createRuntime(ctx, overrides, logger, deps) {
         fresh = await startJob({
           tag: normalizePrompts(expandRosterCalls(rawTag, scoped, jobConfig.traitMode, { style: rosterStyle(jobConfig, workflow ?? styleWorkflow(jobConfig)) }), scoped, { backend: jobConfig.imageBackend, style: rosterStyle(jobConfig, workflow ?? styleWorkflow(jobConfig)) }),
           rawTag,
-          characters: compileCharacterList(characterSource, scoped, jobConfig, rosterStyle(jobConfig, workflow ?? styleWorkflow(jobConfig))),
+          characters: characterSource,
           artist: source.params?.artist,
           artistPosition: source.params?.artistPosition,
           negative: String(negative ?? source.params?.negative ?? ''),
@@ -4308,13 +4308,13 @@ let worldbookCache = null
           const timeline = applyCharacterSnapshot(definitions, src.characterSnapshot)
           const defs = { ...timeline, characters: (timeline.characters ?? []).filter(character => usableOnCard(character, card)) }
           const askedRaw = String(body?.prompt ?? src.params?.rawTag ?? src.params?.tag ?? '')
-          const submitted = /<character_\d/i.test(askedRaw) ? parsePromptsBlock(askedRaw) : null
+          const submitted = /<scene_composition|<character_\d/i.test(askedRaw) ? parsePromptsBlock(askedRaw) : null
           const sceneRaw = submitted ? submitted.scene : askedRaw
           const characterSource = submitted ? submitted.characters : src.params?.characters
           const fresh = await startJob({
             tag: normalizePrompts(expandRosterCalls(sceneRaw, defs, config.traitMode, { style: rosterStyle(config, styleWorkflow(config, src.workflowId)) }), defs, { backend: config.imageBackend, style: rosterStyle(config, styleWorkflow(config, src.workflowId)) }),
             rawTag: sceneRaw,
-            characters: compileCharacterList(characterSource, defs, config, rosterStyle(config, styleWorkflow(config, src.workflowId))),
+            characters: characterSource,
             artist: src.params?.artist,
             artistPosition: src.params?.artistPosition,
             negative: String(body?.negative ?? src.params?.negative ?? ''),

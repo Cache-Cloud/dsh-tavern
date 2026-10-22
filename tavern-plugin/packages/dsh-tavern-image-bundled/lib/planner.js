@@ -133,13 +133,32 @@ export function preserveCharacterMetadata(originalText, revisedText, fallbackCha
   const after = /<scene_composition|<character_\d/i.test(revised)
     ? parsePromptsBlock(revised)
     : { scene: revised.replace(/<[^>]+>/g, '').trim(), characters: [] }
-  const merged = after.characters.map((item, index) => ({
-    ...item,
-    centers: item.centers || before.characters[index]?.centers || '',
-    uc: item.uc || before.characters[index]?.uc || '',
-  }))
-  while (merged.length < before.characters.length) merged.push(before.characters[merged.length])
-  return formatPromptsBlock(after.scene || before.scene, merged.length ? merged : (fallbackCharacters.length ? fallbackCharacters : before.characters))
+  const numberedBlocks = text => [...String(text ?? '').matchAll(CHARACTER_BLOCK_RE)]
+    .filter(hit => tagInner(hit[2], 'prompt'))
+    .map(hit => ({ number: Number(hit[1]), prompt: tagInner(hit[2], 'prompt'), centers: tagInner(hit[2], 'centers') || tagInner(hit[2], 'center'), uc: tagInner(hit[2], 'uc') || tagInner(hit[2], 'negative') }))
+  const originalByNumber = new Map(numberedBlocks(originalText).map(item => [item.number, item]))
+  const revisedBlocks = numberedBlocks(revised)
+  // If the model returns unnumbered/plain text, keep the source roster as before.
+  if (!revisedBlocks.length) {
+    return formatPromptsBlock(after.scene || before.scene, before.characters.length ? before.characters : fallbackCharacters)
+  }
+  const seen = new Set()
+  const merged = revisedBlocks.map(item => {
+    seen.add(item.number)
+    const original = originalByNumber.get(item.number)
+    return { number: item.number, prompt: item.prompt, centers: item.centers || original?.centers || '', uc: item.uc || original?.uc || '' }
+  })
+  for (const item of numberedBlocks(originalText)) {
+    if (!seen.has(item.number)) merged.push({ ...item })
+  }
+  const lines = ['<scene_composition>' + String(after.scene || before.scene).trim() + '</scene_composition>']
+  for (const item of merged) {
+    lines.push('<character_' + item.number + '>', '<prompt>' + item.prompt + '</prompt>')
+    if (item.centers) lines.push('<centers>' + item.centers + '</centers>')
+    if (item.uc) lines.push('<uc>' + item.uc + '</uc>')
+    lines.push('</character_' + item.number + '>')
+  }
+  return lines.join('\n')
 }
 
 /** 解析 <image> 块。模型偶尔会把标签写成全角或漏闭合，这里都尽量兜住。 */
@@ -295,6 +314,7 @@ export function buildPlannerSystem({ rules, dynamicRules = '', roster, rosterInd
     '<固定输出协议>',
     '输出只包含 XML。若本轮启用角色视觉历史，先完整输出一次 <character_updates>{"updates":[]}</character_updates>（有变化时填入更新）；随后完整输出且只输出一次 <decision>draw</decision> 或 <decision>skip</decision>，紧接一个 <reason>简短具体原因</reason>；decision 之后不可修改。skip 时不输出 image。draw 时按顺序逐张尽快输出完整 image 块，使用以下结构，不输出额外长思考：',
     '<images><image><regex>正文中逐字一致的一句话</regex><title_styled>一句简短标题</title_styled><size>...</size><prompts>完整画面提示词</prompts></image></images>',
+    '若输出分角色 XML，必须保留输入角色块的 character_N 编号；不能按输出顺序重新编号。',
     '每张图承担不同叙事功能、景别或动作，并先呈现最重要的瞬间。每张按正文对应时点写服装、地点和外貌；若正文没有写出变化，才沿用此前已确立的状态。只根据正文，不编造。',
     '</固定输出协议>',
   ].join('\n'))

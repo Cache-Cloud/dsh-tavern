@@ -1,7 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { cp, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { Readable } from 'node:stream'
 import { parseImagePlan, parsePromptsBlock, formatPromptsBlock, preserveCharacterMetadata } from '../tavern-plugin/packages/dsh-tavern-image-bundled/lib/planner.js'
-import { compileChannelJob, compileJob, expandRosterCalls } from '../tavern-plugin/packages/dsh-tavern-image-bundled/lib/index.js'
+import { apply, compileChannelJob, compileJob, expandRosterCalls } from '../tavern-plugin/packages/dsh-tavern-image-bundled/lib/index.js'
 import { generateImage } from '../tavern-plugin/packages/dsh-tavern-image-bundled/lib/image-providers.js'
 import { createMediaActions } from '../tavern-plugin/packages/dsh-tavern-image-bundled/lib/media-actions.js'
 
@@ -43,6 +48,103 @@ test('改写模型漏掉 centers、uc 或整个角色块时按角色位置恢复
   const sceneOnly = parsePromptsBlock(preserveCharacterMetadata(original, 'rewritten scene'))
   assert.equal(sceneOnly.scene, 'rewritten scene')
   assert.equal(sceneOnly.characters.length, 2)
+})
+
+test('改写角色按 DSL 编号恢复 metadata，补回缺失编号且不改变解析器输出格式', () => {
+  const original = '<scene_composition>old</scene_composition>'
+    + '<character_1><prompt>old one</prompt><centers>C3</centers><uc>bad one</uc></character_1>'
+    + '<character_2><prompt>old two</prompt><centers>D4</centers><uc>bad two</uc></character_2>'
+  const revised = '<scene_composition>new</scene_composition>'
+    + '<character_2><prompt>new two</prompt></character_2>'
+  const mergedText = preserveCharacterMetadata(original, revised)
+  const merged = parsePromptsBlock(mergedText)
+  assert.deepEqual(merged.characters, [
+    { prompt: 'new two', centers: 'D4', uc: 'bad two' },
+    { prompt: 'old one', centers: 'C3', uc: 'bad one' },
+  ])
+  assert.match(mergedText, /<character_2>[\s\S]*new two[\s\S]*D4[\s\S]*bad two[\s\S]*<\/character_2>/)
+  assert.match(mergedText, /<character_1>[\s\S]*old one[\s\S]*C3[\s\S]*bad one[\s\S]*<\/character_1>/)
+  const reversed = parsePromptsBlock(preserveCharacterMetadata(original,
+    '<scene_composition>new</scene_composition>'
+      + '<character_2><prompt>revised two</prompt></character_2>'
+      + '<character_1><prompt>revised one</prompt></character_1>'))
+  assert.deepEqual(reversed.characters, [
+    { prompt: 'revised two', centers: 'D4', uc: 'bad two' },
+    { prompt: 'revised one', centers: 'C3', uc: 'bad one' },
+  ])
+})
+
+test('真实 /redraw handler 接受显式空角色 DSL，并只对原始角色数据编译一次', async t => {
+  const temp = await mkdtemp(join(tmpdir(), 'dsh-image-redraw-'))
+  t.after(() => rm(temp, { recursive: true, force: true }))
+  const packageSource = new URL('../tavern-plugin/packages/dsh-tavern-image-bundled/', import.meta.url)
+  const packagePath = join(temp, 'plugin')
+  await cp(packageSource, packagePath, { recursive: true })
+  const sourceId = '11111111-1111-4111-8111-111111111111'
+  await writeFile(join(packagePath, 'jobs-store.json'), JSON.stringify({ [sourceId]: {
+    id: sourceId, state: 'done', backend: 'novelai', channelId: 'test-nai', createdAt: Date.now(),
+    params: { rawTag: 'old scene', tag: 'old scene', size: '832x1216', characters: [{ prompt: 'Alice', centers: 'C3', uc: '' }] },
+  } }))
+  await writeFile(join(packagePath, 'definitions.json'), JSON.stringify({ version: 3, characters: [
+    { id: 'alice', name: 'Alice', match: 'Alice', enabled: true, traits: { negative: 'wrong eye color' }, outfits: [] },
+  ], outfits: [], settings: [], props: [] }))
+  const { apply: isolatedApply } = await import(pathToFileURL(join(packagePath, 'lib', 'index.js')).href)
+  const routes = new Map()
+  const disposers = []
+  const disposeHandlers = []
+  const ctx = {
+    logger: { info() {}, warn() {}, error() {} },
+    webServer: { register({ path, handler }) { routes.set(path, handler); return () => routes.delete(path) } },
+    inject(names, install) { if (names.every(name => this[name])) install(this) },
+    effect(install) { const cleanup = install(); if (typeof cleanup === 'function') disposers.push(cleanup); return cleanup },
+    on(event, callback) { if (event === 'dispose') disposeHandlers.push(callback) },
+  }
+  isolatedApply(ctx, {
+    imageBackend: 'novelai', activeImageChannel: 'test-nai',
+    imageChannels: [{ id: 'test-nai', name: 'test', provider: 'novelai', enabled: true, baseUrl: 'https://image.test', apiKey: 'test-key', options: {} }],
+    promptMode: 'tags', traitMode: 'default',
+  })
+  t.after(() => { for (const dispose of disposeHandlers.splice(0).reverse()) dispose(); for (const dispose of disposers.splice(0).reverse()) dispose() })
+  const handler = routes.get('/plugins/dsh-tavern-image/redraw')
+  assert.equal(typeof handler, 'function')
+  const oldFetch = globalThis.fetch
+  const payloads = []
+  globalThis.fetch = async (_url, init) => {
+    payloads.push(JSON.parse(init.body))
+    return new Response(PNG, { status: 200, headers: { 'content-type': 'image/png' } })
+  }
+  t.after(() => { globalThis.fetch = oldFetch })
+  const request = (route, body, method = 'POST') => new Promise((resolve, reject) => {
+    const request = Readable.from(body === undefined ? [] : [Buffer.from(JSON.stringify(body))])
+    Object.assign(request, { url: route, method, headers: { host: 'localhost', 'content-type': 'application/json' } })
+    const response = {
+      headersSent: false,
+      writeHead(status) { this.status = status; this.headersSent = true },
+      end(body) { try { resolve({ status: this.status, body: JSON.parse(String(body)) }) } catch (error) { reject(error) } },
+    }
+    const handler = routes.get(request.url.split('?')[0])
+    if (!handler) return reject(new Error('route not registered: ' + request.url))
+    handler(request, response)
+  })
+  const emptyResult = await request('/plugins/dsh-tavern-image/redraw', { jobId: sourceId, prompt: '<scene_composition>new scene</scene_composition>' })
+  assert.equal(emptyResult.status, 200)
+  assert.equal(emptyResult.body.ok, true)
+  for (let i = 0; payloads.length < 1 && i < 100; i++) await new Promise(resolve => setTimeout(resolve, 10))
+  assert.deepEqual(payloads[0]?.parameters.v4_prompt.caption.char_captions, [])
+  assert.equal(payloads[0]?.parameters.v4_negative_prompt.caption.char_captions.length, 0)
+
+  const roleResult = await request('/plugins/dsh-tavern-image/redraw', { jobId: sourceId, prompt: '<scene_composition>new scene</scene_composition><character_1><prompt>Alice</prompt><uc>manual exclusion</uc></character_1>' })
+  assert.equal(roleResult.status, 200)
+  assert.equal(roleResult.body.ok, true)
+  const detailResult = await request('/plugins/dsh-tavern-image/job-detail?id=' + roleResult.body.jobId, undefined, 'GET')
+  assert.equal(detailResult.status, 200)
+  assert.deepEqual(detailResult.body.job.characters, [{ prompt: 'Alice', centers: '', uc: 'manual exclusion' }])
+  for (let i = 0; payloads.length < 2 && i < 100; i++) await new Promise(resolve => setTimeout(resolve, 10))
+  const rolePayload = payloads[1]
+  assert.equal(rolePayload?.parameters.v4_prompt.caption.char_captions[0]?.char_caption, 'Alice')
+  const roleNegative = rolePayload?.parameters.v4_negative_prompt.caption.char_captions[0]?.char_caption ?? ''
+  assert.match(roleNegative, /manual exclusion/)
+  assert.equal(roleNegative.match(/wrong eye color/g)?.length, 1)
 })
 
 test('未知角色宏在 char caption 保留服装和角度；非 NovelAI 平铺角色负面', () => {
