@@ -136,6 +136,7 @@
 - 显式管道优先：`/sys 文本 | /trigger`、`/send 文本 | /trigger`、`/cut 0` 组合不再看草稿里留的内容，写什么就是什么。
 - 调用串行：`sourceDocument.openingCommandQueue` 让卡的连续调用按顺序结算；`openingCommandStarted` 保证只建一局，重复 `/trigger` 返回同一结果。
 - 兜底：只发 `/send` 却从不发 `/trigger` 的卡（如无限回廊 9.10）不会卡住——页面安静 2 秒后按记下的文本开局，这正是 SillyTavern 里 `/send` 的行为；期间真 `/trigger` 到了就按它走，仍然只开始一次。
+- 页面拆除后的上报：每次切换话题都会拆掉消息 iframe，拆掉之后 `window.parent` 是 null。大凉龙虎传 v4.11 的 unload 回调在 pagehide 里还调 `eventRemoveListener`，于是 `reportSubscriptions` 抛「Cannot read properties of null (reading 'postMessage')」，切回页面就弹一次。现在宿主侧的上报（订阅清单、事件状态回执、初始化耗时、MVU 诊断、脚本就绪、status-stale、触摸滚动中继）统一过 `postToHost`：宿主窗口不可用就安静放弃，不再中断卡自己的卸载流程。
 - 宿主窗口的观察器：`window.parent.MutationObserver` 属于宿主领域，拿不到沙箱里的补丁。`小手机v9` 正是用它观察 `window.parent.document.body`，于是宿主节点代理直接进了原生构造器，报“parameter 1 is not of type 'Node'”。兼容窗口现在对 `MutationObserver`、`IntersectionObserver`、`ResizeObserver` 统一套一层解包，取不到合法节点时改为观察文档根。
 
 测试：`tests/tavern-opening-slash-bridge.test.mjs` 覆盖单独 `/send`、单独 `/sys`、显式管道优先、重复 `/trigger` 只提交一次与其余命令拒绝；`tests/opening-preparation-chat-data.test.mjs` 覆盖草稿里的“先记录后开始”以及两步之间继续保存插件数据。
