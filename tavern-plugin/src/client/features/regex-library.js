@@ -599,7 +599,7 @@
                         h("span", { className: "dsh-tavern-rx-label" }, "作用层"),
                         layerBox(draft, entry)),
                     h("details", { className: "dsh-tavern-rx-advanced" },
-                        h("summary", null, "高级选项"),
+                        h("summary", null, "高级选项", h("span", { className: "dsh-tavern-rx-hint" }, "深度、修剪、编辑时运行")),
                         h("div", { className: "dsh-tavern-rx-advanced-body" },
                             h("label", { className: "dsh-tavern-rx-check" },
                                 h("input", { type: "checkbox", checked: draft.runOnEdit === true, disabled: busy, onChange: function (event) { patchDraft(entry, { runOnEdit: event.target.checked }); } }),
