@@ -26,6 +26,12 @@ export function createRegexHandlers({ regexManager, str }) {
         enabled: args && Object.prototype.hasOwnProperty.call(args, 'enabled') ? args.enabled : undefined
       })
     },
+    async setRegexOverrides(args) {
+      return await regexManager.setOverrides({
+        sessionId: str(args && args.sessionId),
+        changes: args && args.changes
+      })
+    },
     async previewRegexScripts(args) {
       return await regexManager.preview({
         text: args && args.text,

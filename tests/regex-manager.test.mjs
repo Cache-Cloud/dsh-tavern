@@ -143,6 +143,27 @@ test('preset and card overrides are session-only writes to the chat', async () =
   assert.deepEqual(after.card.scripts.map(entry => entry.enabled), [true, false])
 })
 
+test('batch overrides update the chat once and reject the whole batch on a missing key', async () => {
+  const h = harness({ global: [], chat: sampleChat() })
+  const before = h.updates.length
+  const result = await h.manager.setOverrides({
+    sessionId: 'session-1',
+    changes: [
+      { source: 'preset', key: 'p1#1', enabled: true },
+      { source: 'card', key: 'c1', enabled: false }
+    ]
+  })
+  assert.equal(h.updates.length, before + 1)
+  assert.deepEqual(result.overrides, { preset: { 'p1#1': true }, card: { c1: false } })
+  await assert.rejects(h.manager.setOverrides({
+    sessionId: 'session-1',
+    changes: [{ source: 'preset', key: 'p1#1', enabled: true }, { source: 'card', key: 'missing', enabled: true }]
+  }), /已不存在/)
+  assert.equal(h.updates.length, before + 1)
+  await assert.rejects(h.manager.setOverrides({ sessionId: 'session-1', changes: [] }), /没有要修改/)
+  await assert.rejects(h.manager.setOverrides({ sessionId: 'session-1', changes: [{ source: 'preset', key: 'p1#1', enabled: 'yes' }] }), /启用状态无效/)
+})
+
 test('imports SillyTavern exports into the global list and keeps their disabled flag', async () => {
   const h = harness({ global: [], chat: null })
   const data = await h.manager.read('')
@@ -223,6 +244,8 @@ test('RPC handlers expose the manager without leaking storage details', async ()
   assert.equal(written.global[0].enabled, false)
   const overridden = await handlers.setRegexOverride({ sessionId: 'session-1', source: 'preset', key: 'p1#1', enabled: true })
   assert.deepEqual(overridden.overrides.preset, { 'p1#1': true })
+  const batch = await handlers.setRegexOverrides({ sessionId: 'session-1', changes: [{ source: 'card', key: 'c1', enabled: false }] })
+  assert.deepEqual(batch.overrides.card, { c1: false })
   const previewed = await handlers.previewRegexScripts({ text: 'a', scripts: [{ name: 'A', findRegex: '/a/g', replaceString: 'b', placement: [2] }] })
   assert.equal(previewed.text, 'b')
   await assert.rejects(handlers.setRegexOverride({ sessionId: 'session-1', source: 'preset', key: 'p1#1' }), /启用状态无效/)

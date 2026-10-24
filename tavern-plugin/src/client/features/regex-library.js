@@ -148,6 +148,7 @@
             const [query, setQuery] = React.useState("");
             const [filter, setFilter] = React.useState("all");
             const [stateFilter, setStateFilter] = React.useState("all");
+            const [selected, setSelected] = React.useState(function () { return new Set(); });
             const [openKeys, setOpenKeys] = React.useState(function () { return new Set(); });
             const [drafts, setDrafts] = React.useState({});
             const [newDraft, setNewDraft] = React.useState(null);
@@ -179,8 +180,12 @@
                 setTests({});
                 setChainResult(null);
                 setStateFilter("all");
+                setSelected(new Set());
                 setFormError("");
             }, [sessionId]);
+            // A batch selection only applies to the view it was made in; changing
+            // source, state or search clears it instead of acting on hidden rows.
+            React.useEffect(function () { setSelected(new Set()); }, [query, filter, stateFilter]);
 
             async function writeGlobal(scripts, success) {
                 if (!data) return null;
@@ -234,6 +239,7 @@
                 if (!result) return;
                 setDrafts(function (current) { const next = { ...current }; delete next[entry.key]; return next; });
                 setOpenKeys(function (current) { const next = new Set(current); next.delete(entry.key); return next; });
+                setSelected(function (current) { const next = new Set(current); next.delete(selectionId("global", entry.key)); return next; });
             }
 
             async function duplicateEntry(entry) {
@@ -305,19 +311,70 @@
                 if (added) setOpenKeys(function (current) { return new Set(current).add(added.key); });
             }
 
+            function exportScript(entry) {
+                const script = regexEntryScript(entry);
+                return {
+                    id: script.id, scriptName: script.name, findRegex: script.findRegex, replaceString: script.replaceString,
+                    trimStrings: script.trimStrings, placement: script.placement, disabled: script.enabled === false,
+                    markdownOnly: script.markdownOnly, promptOnly: script.promptOnly, runOnEdit: script.runOnEdit,
+                    minDepth: script.minDepth === null ? undefined : script.minDepth,
+                    maxDepth: script.maxDepth === null ? undefined : script.maxDepth
+                };
+            }
+
             function exportAll() {
-                const payload = (data?.global || []).map(function (entry) {
-                    const script = regexEntryScript(entry);
-                    return {
-                        id: script.id, scriptName: script.name, findRegex: script.findRegex, replaceString: script.replaceString,
-                        trimStrings: script.trimStrings, placement: script.placement, disabled: script.enabled === false,
-                        markdownOnly: script.markdownOnly, promptOnly: script.promptOnly, runOnEdit: script.runOnEdit,
-                        minDepth: script.minDepth === null ? undefined : script.minDepth,
-                        maxDepth: script.maxDepth === null ? undefined : script.maxDepth
-                    };
-                });
+                const payload = (data?.global || []).map(exportScript);
                 downloadTavernBlob(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" }), "tavern-regex.json");
                 setNotice("已导出 " + payload.length + " 条全局正则。");
+            }
+
+            function bulkExport() {
+                if (selectedEntries.length === 0) return;
+                const payload = selectedEntries.map(function (item) { return exportScript(item.entry); });
+                downloadTavernBlob(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" }), "tavern-regex-selected.json");
+                setNotice("已导出 " + payload.length + " 条正则。");
+            }
+
+            async function bulkSetEnabled(enabled) {
+                if (selectedEntries.length === 0) return;
+                setBusy(true); setError("");
+                try {
+                    const globals = selectedEntries.filter(function (item) { return item.source === "global"; });
+                    const others = selectedEntries.filter(function (item) { return item.source !== "global"; });
+                    if (globals.length > 0) {
+                        const keys = new Set(globals.map(function (item) { return item.entry.key; }));
+                        const scripts = (data?.global || []).map(function (script) {
+                            const value = regexEntryScript(script);
+                            return keys.has(script.key) ? { ...value, enabled: enabled } : value;
+                        });
+                        const result = await rpc("writeGlobalRegexes", { revision: data.revision, scripts: scripts }, sessionId);
+                        setData(function (current) { return current ? { ...current, global: result.global, revision: result.revision } : current; });
+                    }
+                    if (others.length > 0) {
+                        const changes = others.map(function (item) { return { source: item.source, key: item.entry.key, enabled: enabled }; });
+                        const result = await rpc("setRegexOverrides", { changes: changes }, sessionId);
+                        applyOverrides("preset", result.overrides);
+                        applyOverrides("card", result.overrides);
+                    }
+                    setSelected(new Set());
+                    setChainResult(null);
+                    notifyTavernDataChanged(["regex-library", "sessions"], "regex-library");
+                    setNotice((enabled ? "已启用 " : "已停用 ") + selectedEntries.length + " 条正则。");
+                } catch (err) { setError(String(err && err.message || err)); }
+                finally { setBusy(false); }
+            }
+
+            async function bulkDelete() {
+                const globals = selectedEntries.filter(function (item) { return item.source === "global"; });
+                if (globals.length === 0) {
+                    setNotice("预设和人物卡的正则来自来源文件，不能在这里删除。");
+                    return;
+                }
+                const keys = new Set(globals.map(function (item) { return item.entry.key; }));
+                const skipped = selectedEntries.length - globals.length;
+                const scripts = (data?.global || []).filter(function (script) { return !keys.has(script.key); }).map(regexEntryScript);
+                const result = await writeGlobal(scripts, "已删除 " + globals.length + " 条全局正则。" + (skipped > 0 ? " 跳过 " + skipped + " 条预设/人物卡规则。" : ""));
+                if (result) setSelected(new Set());
             }
 
             async function importFiles(files) {
@@ -451,6 +508,30 @@
                 enabled: stateEntries.filter(function (entry) { return entry.enabled; }).length,
                 disabled: stateEntries.filter(function (entry) { return !entry.enabled; }).length
             };
+            const allEntries = [];
+            if (data) {
+                (data.global || []).forEach(function (entry) { allEntries.push({ source: "global", entry: entry }); });
+                (data.preset?.scripts || []).forEach(function (entry) { allEntries.push({ source: "preset", entry: entry }); });
+                (data.card?.scripts || []).forEach(function (entry) { allEntries.push({ source: "card", entry: entry }); });
+            }
+            const selectedEntries = allEntries.filter(function (item) { return selected.has(item.source + ":" + item.entry.key); });
+            const selectedCount = selectedEntries.length;
+            const visibleEntries = allEntries.filter(function (item) { return filter === "all" || item.source === filter; }).filter(function (item) { return matches(item.entry); });
+
+            function selectionId(source, key) { return source + ":" + key; }
+            function isSelected(source, key) { return selected.has(selectionId(source, key)); }
+            function toggleSelected(source, key) {
+                setSelected(function (current) {
+                    const next = new Set(current);
+                    const id = selectionId(source, key);
+                    if (next.has(id)) next.delete(id); else next.add(id);
+                    return next;
+                });
+            }
+            function selectAllVisible() {
+                setSelected(new Set(visibleEntries.map(function (item) { return selectionId(item.source, item.entry.key); })));
+            }
+            function clearSelected() { setSelected(new Set()); }
 
             function switchButton(source, entry) {
                 return h("button", {
@@ -489,11 +570,12 @@
 
             function row(source, entry) {
                 const open = openKeys.has(entry.key);
+                const checked = isSelected(source, entry.key);
                 const draft = source === "global" ? drafts[entry.key] : null;
                 const current = draft || entry;
                 return h("article", {
                     key: source + ":" + entry.key,
-                    className: "dsh-tavern-rx-row" + (open ? " is-open" : "") + (current.enabled ? "" : " is-disabled") + " src-" + source
+                    className: "dsh-tavern-rx-row" + (open ? " is-open" : "") + (current.enabled ? "" : " is-disabled") + (checked ? " is-selected" : "") + " src-" + source
                 },
                     h("div", {
                         className: "dsh-tavern-rx-row-head", role: "button", tabIndex: 0,
@@ -504,6 +586,14 @@
                             event.preventDefault(); toggleOpen(entry);
                         }
                     },
+                        h("input", {
+                            type: "checkbox", className: "dsh-tavern-rx-select", "data-stop": "",
+                            checked: checked, disabled: busy,
+                            "aria-label": "选择 " + (entry.name || "未命名正则"),
+                            onClick: function (event) { event.stopPropagation(); },
+                            onKeyDown: function (event) { event.stopPropagation(); },
+                            onChange: function () { toggleSelected(source, entry.key); }
+                        }),
                         h("div", { className: "dsh-tavern-rx-row-main" },
                             h("div", { className: "dsh-tavern-rx-row-title" }, h("b", null, current.name || "未命名正则")),
                             h("div", { className: "dsh-tavern-rx-row-preview" },
@@ -819,6 +909,24 @@
                                 }, item[1], h("span", { className: "dsh-tavern-rx-filter-count" }, String(stateCounts[item[0]])));
                             })
                         )
+                    ),
+                    h("div", { className: "dsh-tavern-rx-bulk", role: "group", "aria-label": "批量操作" },
+                        h("span", { className: "dsh-tavern-rx-bulk-count" }, selectedCount > 0 ? "已选 " + selectedCount + " 条" : "未选择"),
+                        h("button", {
+                            className: "dsh-tavern-btn dsh-tavern-rx-small", type: "button",
+                            disabled: busy || visibleEntries.length === 0, onClick: selectAllVisible,
+                            title: "选择当前筛选下的全部规则"
+                        }, "全选当前"),
+                        selectedCount > 0 ? h("button", { className: "dsh-tavern-btn dsh-tavern-rx-small", type: "button", disabled: busy, onClick: clearSelected }, "清除") : null,
+                        selectedCount > 0 ? h("span", { className: "dsh-tavern-rx-spacer" }) : null,
+                        selectedCount > 0 ? h("button", { className: "dsh-tavern-btn dsh-tavern-rx-small", type: "button", disabled: busy, onClick: function () { void bulkSetEnabled(true); } }, "启用") : null,
+                        selectedCount > 0 ? h("button", { className: "dsh-tavern-btn dsh-tavern-rx-small", type: "button", disabled: busy, onClick: function () { void bulkSetEnabled(false); } }, "停用") : null,
+                        selectedCount > 0 ? h("button", { className: "dsh-tavern-btn dsh-tavern-rx-small", type: "button", disabled: busy, onClick: bulkExport }, "导出") : null,
+                        selectedCount > 0 ? h("button", {
+                            className: "dsh-tavern-btn danger dsh-tavern-rx-small", type: "button",
+                            disabled: busy, onClick: function () { void bulkDelete(); },
+                            title: "只删除选中的全局正则；预设/人物卡规则来自来源文件"
+                        }, "删除") : null
                     ),
                     (filter === "all" || filter === "global") ? globalSection() : null,
                     playMode && (filter === "all" || filter === "preset") ? sourceSection("preset") : null,

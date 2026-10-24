@@ -36,7 +36,7 @@ const DATA = {
 test('正则库页面：三来源、开关、本局覆盖、新建与试运行', { timeout: 60000 }, async t => {
   const browser = await chromium.launch({ headless: true })
   t.after(() => browser.close())
-  const page = await browser.newPage({ viewport: { width: 520, height: 1100 } })
+  const page = await browser.newPage({ viewport: { width: 520, height: 1100 }, acceptDownloads: true })
   const errors = []
   page.on('pageerror', error => errors.push(error.message))
   page.on('console', message => { if (message.type() === 'error') errors.push('console: ' + message.text()) })
@@ -71,6 +71,14 @@ test('正则库页面：三来源、开关、本局覆盖、新建与试运行',
         window.__data.overrides[args.source] = map;
         return { overrides: JSON.parse(JSON.stringify(window.__data.overrides)) };
       }
+      if (method === 'setRegexOverrides') {
+        for (const change of args.changes || []) {
+          const map = window.__data.overrides[change.source] || {};
+          if (change.enabled === null) delete map[change.key]; else map[change.key] = change.enabled;
+          window.__data.overrides[change.source] = map;
+        }
+        return { overrides: JSON.parse(JSON.stringify(window.__data.overrides)) };
+      }
       if (method === 'previewRegexScripts') return { text: 'PREVIEW', changed: true, applied: [{ index: 0, id: 'x', name: 'x', matches: 2 }], warnings: [] };
       if (method === 'importRegexes') return { imported: 0, revision: window.__data.revision, global: window.__data.global };
       throw new Error('unexpected RPC: ' + method);
@@ -80,7 +88,8 @@ test('正则库页面：三来源、开关、本局覆盖、新建与试运行',
     window.useVisibleDataRefresh = function (_visible, _affects, refresh) { React.useEffect(function () { refresh(); }, []); };
     window.tavernDataChangeAffects = function () { return false; };
     window.notifyTavernDataChanged = function () {};
-    window.downloadTavernBlob = function () {};
+    window.__downloads = [];
+    window.downloadTavernBlob = function (blob, filename) { window.__downloads.push({ name: filename, size: blob && blob.size }); };
     window.parseTextResourceFile = async function () { return { name: 'x.json', text: '[]' }; };
   ` })
   await page.addScriptTag({ content: source })
@@ -158,5 +167,47 @@ test('正则库页面：三来源、开关、本局覆盖、新建与试运行',
   await page.locator('.dsh-tavern-rx-chain').getByRole('button', { name: '运行' }).evaluate(element => element.click())
   await page.waitForFunction(() => window.__calls.some(call => call.method === 'previewRegexScripts'))
   await page.waitForSelector('text=PREVIEW')
+
+  // multi-select: a row checkbox selects without expanding the row, select-all follows the current filters
+  const presetRow = page.locator('.dsh-tavern-rx-row.src-preset')
+  await presetRow.locator('.dsh-tavern-rx-select').check()
+  await page.waitForFunction(() => document.querySelector('.dsh-tavern-rx-bulk-count')?.textContent === '已选 1 条')
+  assert.equal(await presetRow.locator('.dsh-tavern-rx-row-head').getAttribute('aria-expanded'), 'false')
+  await page.locator('.dsh-tavern-rx-bulk').getByRole('button', { name: '清除' }).click()
+  await page.waitForFunction(() => document.querySelector('.dsh-tavern-rx-bulk-count')?.textContent === '未选择')
+  await page.locator('.dsh-tavern-rx-bulk').getByRole('button', { name: '全选当前' }).click()
+  await page.waitForFunction(() => document.querySelector('.dsh-tavern-rx-bulk-count')?.textContent === '已选 4 条')
+
+  // bulk disable: one global write plus one batch override, both applied immediately
+  await page.locator('.dsh-tavern-rx-bulk').getByRole('button', { name: '停用' }).evaluate(element => element.click())
+  await page.waitForFunction(() => window.__calls.some(call => call.method === 'setRegexOverrides'))
+  await page.waitForFunction(() => [...document.querySelectorAll('.dsh-tavern-rx-switch')].every(node => node.getAttribute('aria-checked') === 'false'))
+  assert.equal(await page.evaluate(() => window.__data.global.every(script => script.enabled === false)), true)
+  assert.equal(await page.evaluate(() => window.__data.overrides.card.c1), false)
+  await page.waitForFunction(() => document.querySelector('.dsh-tavern-rx-bulk-count')?.textContent === '未选择')
+
+  // bulk export includes every selected source
+  await page.locator('.dsh-tavern-rx-bulk').getByRole('button', { name: '全选当前' }).click()
+  await page.waitForFunction(() => document.querySelector('.dsh-tavern-rx-bulk-count')?.textContent === '已选 4 条')
+  await page.locator('.dsh-tavern-rx-bulk').getByRole('button', { name: '导出' }).evaluate(element => element.click())
+  await page.waitForFunction(() => window.__downloads.length > 0)
+  assert.equal(await page.evaluate(() => window.__downloads[0].name), 'tavern-regex-selected.json')
+  assert.ok(await page.evaluate(() => window.__downloads[0].size) > 0)
+
+  // bulk delete only removes global rules; preset/card sources stay
+  await page.locator('.dsh-tavern-rx-bulk').getByRole('button', { name: '删除' }).evaluate(element => element.click())
+  await page.waitForFunction(() => window.__data.global.length === 0)
+  await page.waitForFunction(() => document.querySelectorAll('.dsh-tavern-rx-row.src-global').length === 0)
+  assert.equal(await page.locator('.dsh-tavern-rx-row.src-global').count(), 0)
+  assert.equal(await page.locator('.dsh-tavern-rx-row.src-preset').count(), 1)
+  assert.equal(await page.locator('.dsh-tavern-rx-row.src-card').count(), 1)
+  await page.waitForSelector('.dsh-tavern-rx-notice')
+  assert.match(await page.locator('.dsh-tavern-rx-notice').innerText(), /已删除 2 条全局正则/)
+
+  // selecting only source rules cannot delete them, and says why
+  await page.locator('.dsh-tavern-rx-row.src-preset .dsh-tavern-rx-select').check()
+  await page.locator('.dsh-tavern-rx-bulk').getByRole('button', { name: '删除' }).evaluate(element => element.click())
+  await page.waitForFunction(() => document.querySelector('.dsh-tavern-rx-notice')?.textContent.includes('不能在这里删除'))
+  assert.equal(await page.locator('.dsh-tavern-rx-row.src-preset').count(), 1)
   assert.deepEqual(errors, [])
 })

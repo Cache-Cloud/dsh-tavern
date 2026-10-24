@@ -295,34 +295,54 @@ export function createRegexManager({ regexSettings, legacyLibrary, chatForSessio
     }
   }
 
-  async function setOverride({ sessionId, source, key, enabled }) {
-    const target = source === 'preset' || source === 'card' ? source : ''
-    if (!target) throw new Error('未知的正则来源')
-    const normalizedKey = str(key).trim()
-    if (!normalizedKey) throw new Error('缺少正则标识')
-    if (enabled !== null && typeof enabled !== 'boolean') throw new Error('启用状态无效')
+  async function setOverrides({ sessionId, changes }) {
+    if (!Array.isArray(changes) || changes.length === 0) throw new Error('没有要修改的正则')
+    const normalized = new Map()
+    for (const change of changes) {
+      const source = change && (change.source === 'preset' || change.source === 'card') ? change.source : ''
+      if (!source) throw new Error('未知的正则来源')
+      const key = str(change && change.key).trim()
+      if (!key) throw new Error('缺少正则标识')
+      if (change.enabled !== null && typeof change.enabled !== 'boolean') throw new Error('启用状态无效')
+      normalized.set(source + '\u0000' + key, { source, key, enabled: change.enabled })
+    }
+    if (normalized.size > 200) throw new Error('一次最多修改 200 条正则')
     const chat = await chatForSession(str(sessionId))
     if (!chat) throw new Error('请先打开一局游戏')
     if (groupOfMode(chat.mode) !== 'play') throw new Error('本局覆盖只用于游玩模式')
-    if (enabled !== null) {
-      const scripts = target === 'preset'
-        ? presetScriptsOf(chat)
-        : (await readCardSources(chat.cardPath, chat))?.regexScripts
-      const found = (Array.isArray(scripts) ? scripts : []).some(function (script, index) {
-        return regexScriptKey(target, script, index) === normalizedKey
-      })
-      if (!found) throw new Error('这条正则已不存在，请刷新后重试')
+    const values = [...normalized.values()]
+    let presetKeys = null
+    let cardKeys = null
+    if (values.some(function (change) { return change.source === 'preset' && change.enabled !== null })) {
+      presetKeys = new Set(presetScriptsOf(chat).map(function (script, index) { return regexScriptKey('preset', script, index) }))
+    }
+    if (values.some(function (change) { return change.source === 'card' && change.enabled !== null })) {
+      const sources = await readCardSources(chat.cardPath, chat)
+      cardKeys = new Set((Array.isArray(sources?.regexScripts) ? sources.regexScripts : []).map(function (script, index) {
+        return regexScriptKey('card', script, index)
+      }))
+    }
+    for (const change of values) {
+      if (change.enabled === null) continue
+      const keys = change.source === 'preset' ? presetKeys : cardKeys
+      if (!keys || !keys.has(change.key)) throw new Error('这条正则已不存在，请刷新后重试')
     }
     const saved = await updateChat(chat.id, function (current) {
       const overrides = normalizeRegexOverrides(current.regexOverrides)
       const next = { preset: { ...overrides.preset }, card: { ...overrides.card } }
-      if (enabled === null) delete next[target][normalizedKey]
-      else next[target][normalizedKey] = enabled
+      for (const change of values) {
+        if (change.enabled === null) delete next[change.source][change.key]
+        else next[change.source][change.key] = change.enabled
+      }
       if (Object.keys(next.preset).length === 0 && Object.keys(next.card).length === 0) delete current.regexOverrides
       else current.regexOverrides = next
       return current
     }, { source: 'regex.override' })
     return { overrides: normalizeRegexOverrides(saved && saved.regexOverrides) }
+  }
+
+  async function setOverride({ sessionId, source, key, enabled }) {
+    return await setOverrides({ sessionId, changes: [{ source, key, enabled }] })
   }
 
   async function preview({ text, scripts, placement, depth, isMarkdown, isEdit }) {
@@ -343,5 +363,5 @@ export function createRegexManager({ regexSettings, legacyLibrary, chatForSessio
     }
   }
 
-  return Object.freeze({ read, writeGlobal, importGlobal, setOverride, preview, migrateLegacy })
+  return Object.freeze({ read, writeGlobal, importGlobal, setOverride, setOverrides, preview, migrateLegacy })
 }
