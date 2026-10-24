@@ -5,6 +5,7 @@ import { projectCandidateScriptContext } from './domain/candidate-script-context
 import { projectWorldbookFilterContext } from './domain/worldbook-filter-context.js'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import { prependSystemInstruction } from './domain/system-append.js'
+import { markTavernSectionsLiteral } from './domain/literal-sections.js'
 import { rewindBackgroundSurface } from './domain/background-surface.js'
 import { releaseOpeningTurn, sessionEvents } from './domain/session-events.js'
 import { randomUUID } from 'node:crypto'
@@ -185,6 +186,7 @@ export function createBackgroundAgentTask(options) {
       childCtx.on('system-prompt/assemble', async function (_assembly, _context, next) {
         const assembly = await next()
         if (!isolated) prependSystemInstruction(assembly, options.systemAppend?.())
+        markTavernSectionsLiteral(assembly)
         if (state.input.task === 'phone') {
           assembly.sections = (assembly.sections || []).filter(function (section) {
             return !section || typeof section.name !== 'string' || !section.name.startsWith('tool:')
