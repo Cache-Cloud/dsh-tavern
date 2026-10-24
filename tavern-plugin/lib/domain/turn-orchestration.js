@@ -376,7 +376,7 @@ export function createTurnOrchestrator(options) {
         ? await store.readCardExtensions(cardPath, chat)
         : null
       const presetRegexScripts = await resolvePresetRegexScripts(chat)
-      const regexScripts = composeTavernRegexScripts(extensions, presetRegexScripts)
+      const regexScripts = composeTavernRegexScripts(extensions, presetRegexScripts, chat.regexOverrides && chat.regexOverrides.preset)
       // As in SillyTavern, only permanent input rules change the stored player
       // message; prompt-only rules (e.g. a preset wrapping the input in tags)
       // reach the model and never the bubble, copy or saved history.
@@ -678,7 +678,7 @@ export function createTurnOrchestrator(options) {
       const projectionText = assistantText
       reply = projectReply(sourceText, {
         projectionText,
-        regexScripts: composeTavernRegexScripts(extensions, presetRegexScripts),
+        regexScripts: composeTavernRegexScripts(extensions, presetRegexScripts, chat.regexOverrides && chat.regexOverrides.preset),
         placement: 2,
         isEdit: false,
         depth: 0

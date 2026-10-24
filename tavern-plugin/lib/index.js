@@ -37,6 +37,8 @@ import { registerCardEditingTools } from './tools/card-editing.js'
 import { createConversationGuides } from './domain/conversation-guides.js'
 import { createGuideLibrary } from './domain/guide-library.js'
 import { createRegexLibrary } from './domain/regex-library.js'
+import { createTavernRegexSettings } from './domain/regex-settings.js'
+import { createRegexManager } from './domain/regex-manager.js'
 import { copyJsonTree } from './domain/copy-json-tree.js'
 import { createCandidateContextReader } from './domain/candidate-context-reader.js'
 import { createCandidateWorldbookPreparation } from './domain/candidate-worldbook-preparation.js'
@@ -267,6 +269,7 @@ import { createCardHandlers } from './rpc/cards.js'
 import { createTemplateHandlers } from './rpc/template.js'
 import { createOpeningHandlers } from './rpc/opening.js'
 import { createResourceHandlers } from './rpc/resources.js'
+import { createRegexHandlers } from './rpc/regex.js'
 import { createMediaHandlers } from './rpc/media.js'
 import { createSettingsHandlers } from './rpc/settings.js'
 import { createPluginHandlers } from './rpc/plugins.js'
@@ -702,11 +705,15 @@ export async function apply(ctx) {
     }
     return card
   }
-  async function readCardExtensions(cardPath, chat, settings) {
+  async function readCardExtensionSources(cardPath, chat) {
     const workspace = chat?.cardDefinitionSnapshot || await readCardWorkspace(cardPath)
     if (workspace === undefined) return undefined
-    const extensions = cardPreparation.present({ card: workspace, as: 'card-extensions' })
-    return withGlobalRegexScripts(extensions, settings ?? await tavernExtensionSettings.read())
+    return cardPreparation.present({ card: workspace, as: 'card-extensions' })
+  }
+  async function readCardExtensions(cardPath, chat, settings) {
+    const extensions = await readCardExtensionSources(cardPath, chat)
+    if (extensions === undefined) return undefined
+    return withGlobalRegexScripts(extensions, settings ?? await tavernExtensionSettings.read(), chat && chat.regexOverrides)
   }
   function presetRegexScripts(chat) {
     if (!chat || groupOfMode(chat.mode) !== 'play') return []
@@ -716,7 +723,7 @@ export async function apply(ctx) {
   // The regex a story/script round's text was projected with when it was saved (reply-prose.js).
   async function replyRegexScripts(chat) {
     if (!['story', 'script'].includes(chat?.mode || 'story')) return []
-    return composeTavernRegexScripts(await readCardExtensions(chat.cardPath || chat.cardId, chat), presetRegexScripts(chat))
+    return composeTavernRegexScripts(await readCardExtensions(chat.cardPath || chat.cardId, chat), presetRegexScripts(chat), chat && chat.regexOverrides && chat.regexOverrides.preset)
   }
   const readScript = createScriptReader({ resources: fileResources, version: path => profileData.version('resources/' + path) })
   function prepareTextImport(payload, emptyMessage) {
@@ -931,6 +938,15 @@ export async function apply(ctx) {
       description: String(tool.description || '').replace(/\s+/g, ' ').trim().slice(0, 240) || '插件注册的前台工具。' }
   }
   function chatForSession(sessionId) { return sessionChats.read(sessionId) }
+  const tavernRegexSettings = createTavernRegexSettings({ extensionSettings: tavernExtensionSettings })
+  const regexManager = createRegexManager({
+    regexSettings: tavernRegexSettings,
+    legacyLibrary: regexLibrary,
+    chatForSession,
+    groupOfMode,
+    readCardSources: readCardExtensionSources,
+    updateChat
+  })
   function sessionStateForSession(sessionId) {
     return requestPerformance.stage('readSessionState', () => sessionChats.readState(sessionId))
   }
@@ -3203,7 +3219,7 @@ export async function apply(ctx) {
     project: async (text, chat) => {
       const extensions = await readCardExtensions(chat.cardPath, chat)
       return projectRuntimeReply(text, { charName: chat.cardName, macroState: chat.macroState,
-        regexScripts: composeTavernRegexScripts(extensions, chat.runtimePresetSnapshot?.regexScripts), placement: 2, isEdit: false, depth: 0 })
+        regexScripts: composeTavernRegexScripts(extensions, chat.runtimePresetSnapshot?.regexScripts, chat?.regexOverrides?.preset), placement: 2, isEdit: false, depth: 0 })
     },
     present: presentStory,
     sessionPatch,
@@ -3312,9 +3328,9 @@ export async function apply(ctx) {
     playCardSnapshots, pluginApi, pluginDataStore, pluginGalleryItems, pluginMediaForTurn, pluginMediaTurns,
     pluginSettlementProgress, prepareConversationFork, preparedSaveSessions, presentSystemPrompts,
     presentUserPreferenceProfile, presetLibrary, previewPreset, projectOpeningWindow,
-    readBackgroundSuppression, readCard, readCardExtensions, readCardWorkspace, readChat, readChatCard,
+    readBackgroundSuppression, readCard, readCardExtensions, readCardExtensionSources, readCardWorkspace, readChat, readChatCard,
     readOpeningWindow, readScript, readSessionMap, readTavernSettings, reconcileStory, reconcileWhenIdle,
-    regenBody, regexLibrary, removePluginGalleryItems, removePluginMediaVersion, renameResource,
+    regenBody, regexLibrary, regexManager, removePluginGalleryItems, removePluginMediaVersion, renameResource,
     replayFailedTurn, requestPerformance, retrySettlement, retryStyleReference, rollbackTurn, rollbackToTurn,
     runtimeGeneration, runtimePresets, runtimePrompt, saveUpgrade, sceneIllustrations, scriptContinuity,
     scriptNavigation, sessionActivity, sessionInventory, sessionOperation, sessionPatch,
@@ -3333,6 +3349,7 @@ export async function apply(ctx) {
     createTemplateHandlers(rpcDeps),
     createOpeningHandlers(rpcDeps),
     createResourceHandlers(rpcDeps),
+    createRegexHandlers(rpcDeps),
     createMediaHandlers(rpcDeps),
     createSettingsHandlers(rpcDeps),
     createPluginHandlers(rpcDeps),
@@ -3705,7 +3722,7 @@ export async function apply(ctx) {
       tools,
     })
 
-    registerRegexLibraryTools({ chatForSession, regexLibrary, tools })
+    registerRegexLibraryTools({ regexManager, tools })
 
     registerCardEditingTools({
       activeTurnOf,
