@@ -245,7 +245,9 @@
                 + '<script data-dsh-tavern-tilt-guard>(' + installTavernPointerTiltGuard.toString() + ')(window);<\/script>'
 				+ '<meta name="viewport" content="width=device-width,initial-scale=1">'
 				+ '<meta name="referrer" content="no-referrer">'
-				+ '<meta http-equiv="Content-Security-Policy" content="default-src dsh-app://app/api/dsh-tavern/ https: http: data: blob:; img-src dsh-app://app/api/dsh-tavern/ https: http: data: blob:; media-src dsh-app://app/api/dsh-tavern/ https: http: data: blob:; font-src dsh-app://app/api/dsh-tavern/ https: http: data:; style-src dsh-app://app/api/dsh-tavern/ \'unsafe-inline\' https: http:; script-src dsh-app://app/api/dsh-tavern/ \'unsafe-inline\' \'unsafe-eval\' https: http: data: blob:; connect-src dsh-app://app/api/dsh-tavern/ https: http: wss: data: blob:; frame-src https: http: data: blob:; object-src \'none\'; base-uri \'none\'; form-action \'none\'">'
+				// No base-uri: srcdoc frames a card builds inherit this policy, and a page it
+				// embeds (e.g. a map with <base href> to its CDN) must resolve its own files.
+				+ '<meta http-equiv="Content-Security-Policy" content="default-src dsh-app://app/api/dsh-tavern/ https: http: data: blob:; img-src dsh-app://app/api/dsh-tavern/ https: http: data: blob:; media-src dsh-app://app/api/dsh-tavern/ https: http: data: blob:; font-src dsh-app://app/api/dsh-tavern/ https: http: data:; style-src dsh-app://app/api/dsh-tavern/ \'unsafe-inline\' https: http:; script-src dsh-app://app/api/dsh-tavern/ \'unsafe-inline\' \'unsafe-eval\' https: http: data: blob:; connect-src dsh-app://app/api/dsh-tavern/ https: http: wss: data: blob:; frame-src https: http: data: blob:; object-src \'none\'; form-action \'none\'">'
 				// A transparent iframe stays transparent only while its color scheme matches the
 				// embedding element's; "light dark" followed the OS and painted a white block
 				// inside a dark DSH theme.
