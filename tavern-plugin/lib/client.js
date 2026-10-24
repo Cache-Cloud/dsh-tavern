@@ -25802,7 +25802,7 @@ function createPlayInteractionPanels({ interactions, useCandidatePanel, useCandi
             }
 			return h(RegenGuideForm, {
 				title: "重新生成正文",
-				hint: "不填意见是重新来一次；填了意见就在当前正文基础上改；精修：按原则直接改好（填了意见会一并照意见改），对比和撤销在「精修对比」页",
+				hint: "不填意见是重新来一次；填了意见就在当前正文基础上改；精修：按原则直接改好，填了意见会在精修后再照意见改一次，对比和撤销在「精修对比」页",
 				loading: reviewing ? "正在精修正文… " + reviewSeconds + " 秒" : panel.phase === "loading" ? (panel.restyle ? "正在换文风联想并重新生成…" : panel.rewrite ? "正在按意见改写正文…" : "正在重新生成正文…") : "",
 				extra: h(React.Fragment, null, styleEnabled ? h("div", { className: "dsh-tavern-regen-style" },
 					h("label", null, h("input", { type: "checkbox", checked: restyle, onChange: event => setRestyle(event.target.checked) }), " 同时换一段文风联想"),
@@ -25813,7 +25813,7 @@ function createPlayInteractionPanels({ interactions, useCandidatePanel, useCandi
 				placeholder: "指导意见（可选）",
 				examples: ["写得更长", "侧重心理描写", "加快节奏"],
 				submitLabel: "生成并替换正文",
-				secondary: { label: "精修", title: "按「正文精修原则」审读当前正文，直接改掉问题（一句到整段），填了指导意见会优先照意见改；不重新生成；前后对比与撤销在顶部「精修对比」页", disabled: reviewing, onClick: runPolish },
+				secondary: { label: "精修", title: "按「正文精修原则」审读当前正文，直接改掉问题（一句到整段）；填了指导意见，精修后再只照意见改一次；不重新生成；前后对比、撤销和「后台预审」开关在顶部「精修对比」页", disabled: reviewing, onClick: runPolish },
 				onSubmit: generate,
 				onCancel: function () { setRegenPanel(null); }
 			});
@@ -27841,6 +27841,7 @@ function createPlayInteractionPanels({ interactions, useCandidatePanel, useCandi
 			const [tip, setTip] = React.useState(null);
 			const [undoing, setUndoing] = React.useState(false);
 			const [notice, setNotice] = React.useState("");
+			const [saving, setSaving] = React.useState(false);
 			const revision = React.useRef(0);
 			const hover = {
 				current: tip,
@@ -27856,7 +27857,7 @@ function createPlayInteractionPanels({ interactions, useCandidatePanel, useCandi
 				setBusy(true);
 				try {
 					const result = await rpc("polishComparison", {}, sessionId);
-					if (requested === revision.current) setState({ sessionId: sessionId, comparison: result.comparison || null, error: "" });
+					if (requested === revision.current) setState({ sessionId: sessionId, comparison: result.comparison || null, prereview: result.prereview === true, error: "" });
 				} catch (error) {
 					if (requested === revision.current) setState({ sessionId: sessionId, comparison: null, error: String(error && error.message || error) });
 				} finally { if (requested === revision.current) setBusy(false); }
@@ -27868,6 +27869,15 @@ function createPlayInteractionPanels({ interactions, useCandidatePanel, useCandi
 				window.addEventListener("dsh-tavern-polished", changed);
 				return function () { window.removeEventListener("dsh-tavern-polished", changed); };
 			}, [sessionId, load]);
+			// 后台预审 is one switch for every game: each reply is reviewed as soon as it is written.
+			async function togglePrereview(enabled) {
+				setSaving(true); setNotice("");
+				try {
+					const result = await rpc("updateTavernSettings", { patch: { polishPrereview: enabled } });
+					setState(function (current) { return current ? Object.assign({}, current, { prereview: result.settings.polishPrereview === true }) : current; });
+				} catch (error) { setNotice("保存失败：" + String(error && error.message || error)); }
+				finally { setSaving(false); }
+			}
 			async function undo() {
 				setUndoing(true); setNotice("");
 				try {
@@ -27883,7 +27893,13 @@ function createPlayInteractionPanels({ interactions, useCandidatePanel, useCandi
 			const current = state && state.sessionId === sessionId ? state : null;
 			const comparison = current && current.comparison;
 			const edits = comparison ? comparison.segments.filter(function (segment) { return segment.kind === "edit"; }).sort(function (a, b) { return a.n - b.n; }) : [];
+			const prereview = current ? current.prereview === true : false;
 			return h("section", { className: "dsh-tavern-full-context dsh-tavern-polish-compare" },
+				h("label", { className: "dsh-tavern-background-task" },
+					h("span", null, "后台预审", h("span", { className: "dsh-tavern-settings-desc" }, prereview
+						? "每轮正文写完就在后台审稿，点「精修」时多半已经审好，直接应用。每轮都会多一次模型调用，没点精修的轮次也照样计费。"
+						: "开启后，每轮正文写完就在后台审稿，点「精修」不用再等；每轮多一次模型调用。关闭时点「精修」才开始审稿，要等半分钟到一分钟。")),
+					h("input", { type: "checkbox", role: "switch", "aria-label": "后台预审", checked: prereview, disabled: !current || saving, onChange: function (event) { void togglePrereview(event.target.checked); } })),
 				h("header", { className: "dsh-context-header" },
 					h("div", null, h("h3", null, "精修对比"),
 						h("p", null, !current ? "读取中…" : comparison

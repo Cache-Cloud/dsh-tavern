@@ -221,6 +221,10 @@ export function applyTavernSettingsPatch(current, patch) {
     if (typeof input.hideContextAndReasoning !== 'boolean') throw new Error('无效的对话显示设置')
     next.hideContextAndReasoning = input.hideContextAndReasoning
   }
+  if (Object.hasOwn(input, 'polishPrereview')) {
+    if (typeof input.polishPrereview !== 'boolean') throw new Error('无效的精修预审设置')
+    next.polishPrereview = input.polishPrereview
+  }
   if (Object.hasOwn(input, 'candidateDismissMode')) {
     if (!['after-fill', 'after-send'].includes(input.candidateDismissMode)) throw new Error('无效的候选项收起方式')
     next.candidateDismissMode = input.candidateDismissMode
@@ -375,6 +379,8 @@ export function presentTavernSettings(document, defaults) {
     hideContextAndReasoning: object(document).hideContextAndReasoning !== false,
     headerItems: readHeaderItems(object(document).headerItems),
     candidateDismissMode: object(document).candidateDismissMode === 'after-fill' ? 'after-fill' : 'after-send',
+    // 精修预审: off by default, since it reviews every reply whether or not 精修 is pressed.
+    polishPrereview: object(document).polishPrereview === true,
     storyInputToolCall: storyToolCalls.input,
     storyOutputToolCall: storyToolCalls.output,
     castPresentation: object(document).castPresentation === true,

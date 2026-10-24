@@ -180,6 +180,7 @@ import { createManualLedger } from './domain/manual-ledger.js'
 import { POSTURE_SUBMIT_TOOL } from './domain/posture-submission.js'
 import { createCastPresentation } from './domain/cast-presentation.js'
 import { createPolishRecords } from './domain/polish-records.js'
+import { createPolishPrereview, createPolishReviewer } from './domain/polish-run.js'
 import { createCardAutoReload } from './domain/card-auto-reload.js'
 import { createRuntimeLogBuffer, runtimeHealthReport } from './domain/runtime-health.js'
 import { createStageDirector, STAGE_UPDATE_TOOL } from './domain/stage-director.js'
@@ -2080,6 +2081,8 @@ export async function apply(ctx) {
     run: (chatId, signal) => wholeReads.scope('回复后预备', () => prepareAfterReply(chatId, signal))
   })
   turnSettled.subscribe(({ chatId, latest }) => { if (latest) return worldbookPrefilter.start(chatId) })
+  // A regenerated reply (no foreground end of its own) or one the pre-review has not read yet.
+  turnSettled.subscribe(({ latest }) => { if (latest) return polishPrereview.start(latest.sessionId) })
 
   // The replies each game prepared for (round and version, the latest few). Tavern's own
   // turns — a rollback, a body edit, a repair — end like replies but bring no new one:
@@ -2109,6 +2112,7 @@ export async function apply(ctx) {
   ctx.on('session/event', function (session, event) {
     if (event?.type !== 'user/message' || event.surfaceOp !== 'append' || event.data?.source?.kind !== 'user' || event.data.source.repair) return
     if (!session?.id || backgroundAgentRunner.owns(session.id)) return
+    polishPrereview.cancel(session.id)
     void readSessionMap().then(links => { const chatId = links[str(session.id)]; if (chatId) return worldbookPrefilter.cancel(chatId) }).catch(() => {})
   })
   ctx.effect(() => () => worldbookPrefilter.dispose())
@@ -2196,6 +2200,13 @@ export async function apply(ctx) {
   const pluginSettlementProgress = createPluginSettlementProgress()
   // What each 精修 changed, shown on the 精修对比 page.
   const polishRecords = createPolishRecords({ data: pluginData, turns: pluginTurns })
+  const polishReviewer = createPolishReviewer({ latestFloors: (sessionId, count) => chatHeaderWithLatestFloors(sessionId, count), readCard, prompt: runtimePrompt, callModel })
+  // 精修预审 (a setting, off by default): each reply is reviewed as soon as it is written.
+  const polishPrereview = createPolishPrereview({
+    enabled: async () => (await readTavernSettings()).polishPrereview === true,
+    readTexts: async sessionId => (await bodyEditor.read(sessionId)).parts.filter(part => part.kind === 'text').map(part => part.text),
+    review: (sessionId, texts, signal) => polishReviewer.review(sessionId, texts, signal)
+  })
   // Dialogue speakers and emotions, annotated by settlement (docs/design/cast-presentation.md).
   const castPresentation = createCastPresentation({
     // On for every game with 对话气泡; 舞台模式 needs it too, so the stage always has its annotations.
@@ -3084,6 +3095,7 @@ export async function apply(ctx) {
     tasks: backgroundTasks,
     queueBackground: queueSettlement,
     directRound,
+    afterReply: sessionId => polishPrereview.start(sessionId),
     cancelDirector: (sessionId, turn) => {
       stageDirectorStream.cancel(sessionId, turn)
       if (turn === undefined) return directorJobs.cancel(sessionId, { wait: false })
@@ -3312,7 +3324,7 @@ export async function apply(ctx) {
   // Request handlers by area live in rpc/; bindings assigned later are read through getters.
   const rpcDeps = { TAVERN_PACKAGE_VERSION, agentCompaction, agentRegistry, appendStoryRounds,
     applicationUpdater, assetLibrary, attachPlayChatDebug, backgroundAgentRunner, backgroundCatalog,
-    backgroundConfigForSession, bindScript, bodyEditor, callModel, candidateGenerator, candidateTasks, polishRecords, chatHeaderWithLatestFloors, applyCardUpdate, cardAutoReload,
+    backgroundConfigForSession, bindScript, bodyEditor, callModel, candidateGenerator, candidateTasks, polishPrereview, polishRecords, polishReviewer, chatHeaderWithLatestFloors, applyCardUpdate, cardAutoReload,
     cardMemory, cardOrganization, cardPacksOf, cardPlugins, cardPreparation, cardSummaries, cardTaskPrompts, castAssets,
     castCardOf, castEdit, castPresentation, castStage, castView, chatForSession, chatHeaderForSession,
     chatHistoryImporter, chatPersistence, commands, compactionAbort, compatibilityDiagnostics,
