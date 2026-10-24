@@ -174,12 +174,16 @@ export function sessionStablePrefixSections(session, openingText = '') {
   // Imports prepare their events before a native Session is published.
   const sections = prefix ? sourceSections(prefix.text) : openingText ? sourceSections(openingText) : []
   const directory = sessionVariableDirectorySection(session)
-  return directory ? [...sections, directory] : sections
+  // Card, worldbook, and directory text is data, not a prompt template: a
+  // literal {{name}} in it would otherwise reach the host interpolator, which
+  // throws on every name it has not registered. Marking here also heals events
+  // recorded before the flag existed, without rewriting them.
+  return (directory ? [...sections, directory] : sections).map(section => ({ ...section, interpolate: false }))
 }
 
 /** Replace only the request projection; persisted opening events remain immutable. */
 export function withCurrentWorldbook(sections, context) {
   const fixed = sections.filter(section => section.name !== 'tavern:constant-worldbook')
   const text = str(context).trim()
-  return text ? [{ name: 'tavern:constant-worldbook', text: '【常驻世界书】\n' + text }, ...fixed] : fixed
+  return text ? [{ name: 'tavern:constant-worldbook', interpolate: false, text: '【常驻世界书】\n' + text }, ...fixed] : fixed
 }

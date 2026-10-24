@@ -161,6 +161,9 @@ export function createBackgroundAgentTask(options) {
         name: 'deployment:persona',
         order: 0,
         complete: true,
+        // The assembled text carries card and worldbook snapshots verbatim, so a
+        // literal {{name}} in them must not be interpolated by the host.
+        interpolate: false,
         // DSH restores complete sections after the assembly waterfall, so the
         // additional instruction must be part of this authoritative text.
         text: () => {
