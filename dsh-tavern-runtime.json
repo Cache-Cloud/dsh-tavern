@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "revision": "d06cb84d86ef9380d79e8f3012f1256da3da261a",
-  "releaseSequence": 876,
+  "revision": "074b96b9dc05e3f8521cc770cfc2de3808bc3df3",
+  "releaseSequence": 877,
   "version": "3.1.0",
   "files": [
     {
@@ -616,8 +616,8 @@
     },
     {
       "path": "tavern-plugin/lib/asset-library/pack-v2/service.js",
-      "sha256": "a69530f1ca847f686471b56169c1ee4fb0cf6804180f52ac177db6328ca0187c",
-      "size": 16699
+      "sha256": "dc9f3ef3a8e98124935283a2796d7e8c213d2f254493ffe9a68a0d02c92fe0fa",
+      "size": 18167
     },
     {
       "path": "tavern-plugin/lib/asset-library/pack-v2/skin-svg.js",
@@ -686,13 +686,13 @@
     },
     {
       "path": "tavern-plugin/lib/client-assets/tavern.css",
-      "sha256": "c80306f5b63e1ce1904481ded2f652b314577c2206a57a97b069a4ee1f763263",
-      "size": 369785
+      "sha256": "f77cfcccc945127e656b8687e0934b50a9c8111e3ba0cac931e3cdaddb922332",
+      "size": 387553
     },
     {
       "path": "tavern-plugin/lib/client.js",
-      "sha256": "bec885c06685a3750a5c48d6fb4f858ed50d4226ec80a64f0c12234a2317b82c",
-      "size": 2319004
+      "sha256": "c2fde2d3b7e28e1f7802f3880c40076a2ac8a29036d2fd4711143d77fad50ad7",
+      "size": 2351666
     },
     {
       "path": "tavern-plugin/lib/cordis-inspect.js",
@@ -2181,8 +2181,8 @@
     },
     {
       "path": "tavern-plugin/lib/domain/stage-material.js",
-      "sha256": "804fb7ee062d6c2b8f59900e513323596cd380d664d38bda6c25703e939fa13a",
-      "size": 19652
+      "sha256": "a2324ee0506e00a5da4125b615a33c61283bba94f86597d922a91fad261ff6a8",
+      "size": 20230
     },
     {
       "path": "tavern-plugin/lib/domain/stage-performance-playback.js",
@@ -2651,8 +2651,8 @@
     },
     {
       "path": "tavern-plugin/lib/index.js",
-      "sha256": "085fe2a3ff6bcd9ef6c064453fab5ef40a02bcd1da9097ceb9f83310e101c63f",
-      "size": 234292
+      "sha256": "31e5d2240c5e0f8b9df289f925312612b7d9148e10056289e77b2656c88fd45d",
+      "size": 234991
     },
     {
       "path": "tavern-plugin/lib/plugin-api.js",
@@ -4551,9 +4551,9 @@
     }
   ],
   "archive": {
-    "commit": "40ee874a8fcad93c1f4e5c29ca378f6db2a5a0ae",
+    "commit": "3a8e7419b5f81edc015db04d88803c662372096e",
     "path": "runtime.zip",
-    "sha256": "490c750949b6d7196324b0118a047474114fc3e19a5fd91a30f33a5e32ff449d",
-    "size": 9964836
+    "sha256": "02a719a242f8f78fa49453e0c0609bbcd464663ef4af9ac9f62bee49b148c810",
+    "size": 9977313
   }
 }
