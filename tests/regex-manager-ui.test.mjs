@@ -107,6 +107,8 @@ test('正则库页面：三来源、开关、本局覆盖、新建与试运行',
   await page.waitForFunction(() => window.__calls.some(call => call.method === 'setRegexOverride'))
   const override = await page.evaluate(() => window.__calls.find(call => call.method === 'setRegexOverride').args)
   assert.deepEqual(override, { source: 'preset', key: 'p1#1', enabled: false })
+  await page.waitForFunction(() => document.querySelector('.dsh-tavern-rx-row.src-preset .dsh-tavern-rx-switch')?.getAttribute('aria-checked') === 'false')
+  assert.match(await page.locator('.dsh-tavern-rx-row.src-preset').innerText(), /本局覆盖/)
 
   // new regex editor saves through the global list
   await page.getByRole('button', { name: '新建' }).click()
@@ -132,6 +134,8 @@ test('正则库页面：三来源、开关、本局覆盖、新建与试运行',
   await page.waitForTimeout(100)
   await page.locator('.dsh-tavern-rx-row.src-card').getByRole('button', { name: '恢复跟随来源' }).evaluate(element => element.click())
   await page.waitForFunction(() => window.__calls.some(call => call.method === 'setRegexOverride' && call.args.source === 'card' && call.args.enabled === null))
+  await page.waitForFunction(() => document.querySelector('.dsh-tavern-rx-row.src-card .dsh-tavern-rx-switch')?.getAttribute('aria-checked') === 'false')
+  assert.doesNotMatch(await page.locator('.dsh-tavern-rx-row.src-card').innerText(), /本局覆盖/)
 
   // chain preview runs through the host RPC
   await page.locator('.dsh-tavern-rx-chain > summary').evaluate(element => element.click())

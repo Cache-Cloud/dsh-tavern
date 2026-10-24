@@ -266,13 +266,14 @@
             }
 
             function applyOverrides(source, overrides) {
+                const map = overrides && overrides[source] && typeof overrides[source] === "object" ? overrides[source] : {};
                 setData(function (current) {
                     if (!current) return current;
                     const group = current[source];
                     if (!group) return { ...current, overrides };
                     const scripts = group.scripts.map(function (entry) {
-                        const has = Object.prototype.hasOwnProperty.call(overrides, entry.key);
-                        return { ...entry, overridden: has, enabled: has ? overrides[entry.key] === true : entry.sourceEnabled };
+                        const has = Object.prototype.hasOwnProperty.call(map, entry.key);
+                        return { ...entry, overridden: has, enabled: has ? map[entry.key] === true : entry.sourceEnabled };
                     });
                     return { ...current, overrides, [source]: { ...group, scripts } };
                 });
