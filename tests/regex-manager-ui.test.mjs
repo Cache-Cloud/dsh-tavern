@@ -110,6 +110,21 @@ test('正则库页面：三来源、开关、本局覆盖、新建与试运行',
   await page.waitForFunction(() => document.querySelector('.dsh-tavern-rx-row.src-preset .dsh-tavern-rx-switch')?.getAttribute('aria-checked') === 'false')
   assert.match(await page.locator('.dsh-tavern-rx-row.src-preset').innerText(), /本局覆盖/)
 
+  // enabled-state filter combines with the source filter
+  await page.locator('.dsh-tavern-rx-state-filter', { hasText: '已停用' }).click()
+  await page.waitForTimeout(100)
+  assert.equal(await page.locator('.dsh-tavern-rx-row.src-global').count(), 1)
+  assert.equal(await page.locator('.dsh-tavern-rx-row.src-preset').count(), 1)
+  assert.equal(await page.locator('.dsh-tavern-rx-row.src-card').count(), 0)
+  await page.locator('.dsh-tavern-rx-state-filter', { hasText: '已启用' }).click()
+  await page.waitForTimeout(100)
+  assert.equal(await page.locator('.dsh-tavern-rx-row.src-global').count(), 0)
+  assert.equal(await page.locator('.dsh-tavern-rx-row.src-preset').count(), 0)
+  assert.equal(await page.locator('.dsh-tavern-rx-row.src-card').count(), 1)
+  await page.locator('.dsh-tavern-rx-state-filter', { hasText: '全部' }).click()
+  await page.waitForTimeout(100)
+  assert.equal(await page.locator('.dsh-tavern-rx-row').count(), 3)
+
   // new regex editor saves through the global list
   await page.getByRole('button', { name: '新建' }).click()
   await page.locator('.dsh-tavern-rx-row.is-new input[type="text"]').first().fill('新规则')

@@ -147,6 +147,7 @@
             const [busy, setBusy] = React.useState(false);
             const [query, setQuery] = React.useState("");
             const [filter, setFilter] = React.useState("all");
+            const [stateFilter, setStateFilter] = React.useState("all");
             const [openKeys, setOpenKeys] = React.useState(function () { return new Set(); });
             const [drafts, setDrafts] = React.useState({});
             const [newDraft, setNewDraft] = React.useState(null);
@@ -177,6 +178,7 @@
                 setNewDraft(null);
                 setTests({});
                 setChainResult(null);
+                setStateFilter("all");
                 setFormError("");
             }, [sessionId]);
 
@@ -217,6 +219,7 @@
                     setOpenKeys(function (current) { const next = new Set(current); next.delete(entry.key); return next; });
                 } else {
                     setNewDraft(null);
+                    setStateFilter("all");
                     const added = result.global[result.global.length - 1];
                     if (added) {
                         setOpenKeys(function (current) { return new Set(current).add(added.key); });
@@ -238,6 +241,7 @@
                 delete script.id;
                 const result = await writeGlobal([...(data?.global || []).map(regexEntryScript), script], "已复制一条全局正则（默认停用）。");
                 if (!result) return;
+                setStateFilter("all");
                 const added = result.global[result.global.length - 1];
                 if (added) setOpenKeys(function (current) { return new Set(current).add(added.key); });
             }
@@ -296,6 +300,7 @@
                 delete script.id;
                 const result = await writeGlobal([...(data?.global || []).map(regexEntryScript), script], "已复制到全局正则（默认停用）。");
                 if (!result) return;
+                setStateFilter("all");
                 const added = result.global[result.global.length - 1];
                 if (added) setOpenKeys(function (current) { return new Set(current).add(added.key); });
             }
@@ -329,6 +334,7 @@
                         setData(function (current) { return current ? { ...current, global: result.global, revision: result.revision } : current; });
                     }
                     setChainResult(null);
+                    setStateFilter("all");
                     notifyTavernDataChanged(["regex-library", "sessions"], "regex-library");
                     setNotice("已导入 " + count + " 条正则到全局。");
                 } catch (err) { setError((count ? "已导入 " + count + " 条，其余失败：" : "") + String(err && err.message || err)); }
@@ -367,6 +373,7 @@
                 setNewDraft(regexNewDraft());
                 setFormError("");
                 setFilter("all");
+                setStateFilter("all");
                 setQuery("");
             }
 
@@ -420,10 +427,12 @@
             }
 
             const matches = React.useCallback(function (entry) {
+                if (stateFilter === "enabled" && entry.enabled !== true) return false;
+                if (stateFilter === "disabled" && entry.enabled !== false) return false;
                 const needle = query.trim().toLocaleLowerCase();
                 if (needle === "") return true;
                 return [entry.name, entry.findRegex, entry.replaceString].join(" ").toLocaleLowerCase().includes(needle);
-            }, [query]);
+            }, [query, stateFilter]);
 
             const counts = {
                 all: (data?.global?.length || 0) + (data?.preset?.scripts?.length || 0) + (data?.card?.scripts?.length || 0),
@@ -433,6 +442,15 @@
             };
             const enabledCount = [].concat(data?.global || [], data?.preset?.scripts || [], data?.card?.scripts || []).filter(function (entry) { return entry.enabled; }).length;
             const playMode = data?.mode === "story" || data?.mode === "script";
+            const stateEntries = filter === "global" ? (data?.global || [])
+                : filter === "preset" ? (data?.preset?.scripts || [])
+                    : filter === "card" ? (data?.card?.scripts || [])
+                        : [].concat(data?.global || [], data?.preset?.scripts || [], data?.card?.scripts || []);
+            const stateCounts = {
+                all: stateEntries.length,
+                enabled: stateEntries.filter(function (entry) { return entry.enabled; }).length,
+                disabled: stateEntries.filter(function (entry) { return !entry.enabled; }).length
+            };
 
             function switchButton(source, entry) {
                 return h("button", {
@@ -672,7 +690,7 @@
                             }
                         }, allEnabled ? "全部停用" : "全部启用")),
                     newDraft ? newDraftRow() : null,
-                    entries.length ? entries.map(function (entry) { return row("global", entry); }) : (!newDraft ? empty(query ? "没有匹配的全局正则。" : "暂无全局正则。点「新建」写一条，或从酒馆导入。") : null)
+                    entries.length ? entries.map(function (entry) { return row("global", entry); }) : (!newDraft ? empty(query || stateFilter !== "all" ? "没有匹配的全局正则。" : "暂无全局正则。点「新建」写一条，或从酒馆导入。") : null)
                 );
             }
 
@@ -701,7 +719,7 @@
                     groupHead(source, label + " · " + group.name, group.scripts.length,
                         (source === "preset" ? "本局预设快照" : "本局人物卡") + " · " + group.path,
                         null),
-                    entries.length ? entries.map(function (entry) { return row(source, entry); }) : empty(query ? "没有匹配的正则。" : "这一层没有正则。")
+                    entries.length ? entries.map(function (entry) { return row(source, entry); }) : empty(query || stateFilter !== "all" ? "没有匹配的正则。" : "这一层没有正则。")
                 );
             }
 
@@ -788,6 +806,17 @@
                                     className: "dsh-tavern-rx-filter" + (filter === item[0] ? " is-on" : ""),
                                     onClick: function () { setFilter(item[0]); }
                                 }, item[1], h("span", { className: "dsh-tavern-rx-filter-count" }, String(counts[item[0]])));
+                            })
+                        ),
+                        h("div", { className: "dsh-tavern-rx-state-filters", role: "group", "aria-label": "按启用状态筛选" },
+                            h("span", { className: "dsh-tavern-rx-state-label" }, "状态"),
+                            [["all", "全部"], ["enabled", "已启用"], ["disabled", "已停用"]].map(function (item) {
+                                return h("button", {
+                                    key: item[0], type: "button",
+                                    "aria-pressed": stateFilter === item[0] ? "true" : "false",
+                                    className: "dsh-tavern-rx-filter dsh-tavern-rx-state-filter" + (stateFilter === item[0] ? " is-on" : ""),
+                                    onClick: function () { setStateFilter(item[0]); }
+                                }, item[1], h("span", { className: "dsh-tavern-rx-filter-count" }, String(stateCounts[item[0]])));
                             })
                         )
                     ),
