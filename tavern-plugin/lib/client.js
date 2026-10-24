@@ -4788,7 +4788,8 @@ function tavernModelRefusalNotice(text) {
 					const stale = Array.from(reads.values()).some(function (entry) { return JSON.stringify(read(optionFor(entry))) !== entry.value; });
 					if (!stale) return;
 					requested = true;
-					parent.postMessage({ type: "dsh-tavern-status-stale", token: token }, "*");
+					const host = window.parent;
+					if (host && typeof host.postMessage === "function") host.postMessage({ type: "dsh-tavern-status-stale", token: token }, "*");
 				}, 5000);
 			});
 		}
@@ -4818,7 +4819,10 @@ function tavernModelRefusalNotice(text) {
 		  }
 		  window.triggerSlash = function (line) {
 		    const command = String(line || '');
-		    return request('dsh-tavern-helper-call', { method: 'triggerTavernSlash', args: { line: command } }).catch(function (error) {
+		    return request('dsh-tavern-helper-call', { method: 'triggerTavernSlash', args: { line: command } }).then(function (result) {
+		      if (result && result.deferred) showPendingFloor(command);
+		      return result;
+		    }).catch(function (error) {
 		      // Many legacy wizards replace their body before submitting. Keep a retry
 		      // entry even when their own button and form have already disappeared.
 		      if (typeof document !== 'undefined' && document.body) {
@@ -4880,6 +4884,18 @@ function tavernModelRefusalNotice(text) {
 		  window.TavernHelper = Object.assign({}, original && original.helper, { triggerSlash: window.triggerSlash, generate: window.generate, generateRaw: window.generateRaw, getCharWorldbookNames: window.getCharWorldbookNames, getGlobalWorldbookNames: window.getGlobalWorldbookNames, getChatWorldbookName: window.getChatWorldbookName,
 		    getWorldbook: window.getWorldbook, updateWorldbookWith: window.updateWorldbookWith });
 		  const chat = [{ is_user: false, name: preview.characterName || '', mes: swipes[selected], swipe_id: selected, swipes: swipes.slice() }];
+		  // A wizard writes its opening record into "the floor it just sent". The game
+		  // starts later, so that floor is only a promise until the host creates it;
+		  // showing it here keeps the wizard's own bookkeeping working.
+		  let pendingFloor = null;
+		  function contextChat() { return pendingFloor ? chat.concat([pendingFloor]) : chat; }
+		  function showPendingFloor(line) {
+		    const match = /^\s*\/send\s+([\s\S]+)$/.exec(String(line || '').trim());
+		    const text = match ? match[1].trim().replace(/\\\|/g, '|') : '';
+		    if (!text) return;
+		    pendingFloor = Object.assign(pendingFloor || {}, { is_user: true, name: preview.playerName || '你',
+		      mes: text, message: text, swipe_id: 0, swipes: [text], variables: pendingFloor ? pendingFloor.variables : {} });
+		  }
 		  let savedIndex = selected;
 		  const swipe = { to: async function (_chatId, direction, options = {}) {
 		    if (options.forceMesId !== undefined && Number(options.forceMesId) !== 0) throw new Error('只能切换开场消息');
@@ -4890,7 +4906,7 @@ function tavernModelRefusalNotice(text) {
 		  if (!window.toastr) window.toastr = { info: console.info, success: console.info, warning: console.warn, error: console.error };
 		  window.SillyTavern = Object.assign({}, original && original.host, {
 		    chat, swipe,
-		    getContext: function () { return Object.assign({}, original && original.host.getContext(), { chat, swipe, extensionSettings: original ? original.host.getContext().extensionSettings : {} }); },
+		    getContext: function () { return Object.assign({}, original && original.host.getContext(), { chat: contextChat(), swipe, extensionSettings: original ? original.host.getContext().extensionSettings : {} }); },
 		    saveChat: async function () {
 		      const message = chat[0];
 		      const index = Number(message && message.swipe_id);
@@ -4905,11 +4921,18 @@ function tavernModelRefusalNotice(text) {
 		      await window.setChatMessages([{ message_id: 0, swipe_id: savedIndex }]);
 		    }
 		  });
-		  window.getCurrentMessageId = window.getLastMessageId = function () { return 0; };
+		  window.getCurrentMessageId = window.getLastMessageId = function () { return contextChat().length - 1; };
 		  window.getChatMessages = function (id, options) {
 		    if (original) return original.getChatMessages(id, options);
-		    if (Number(id) !== 0 || (options && options.role && !['all', 'assistant'].includes(options.role))) return [];
-		    return [{ message_id: 0, role: 'assistant', message: swipes[selected], swipe_id: selected, swipes: swipes.slice() }];
+		    const rows = contextChat();
+		    const index = id === 'latest' || id === undefined ? rows.length - 1 : Number(id);
+		    if (!Number.isInteger(index) || index < 0 || index >= rows.length) return [];
+		    if (index === 0) {
+		      if (options && options.role && !['all', 'assistant'].includes(options.role)) return [];
+		      return [{ message_id: 0, role: 'assistant', message: swipes[selected], swipe_id: selected, swipes: swipes.slice() }];
+		    }
+		    if (options && options.role && !['all', 'user'].includes(options.role)) return [];
+		    return [Object.assign({}, pendingFloor, { message_id: index, role: 'user' })];
 		  };
 		  // Standalone choosers without a preparation draft may await this gate without reading MVU.
 		  window.waitGlobalInitialized = async function (name) {
@@ -5936,7 +5959,11 @@ function tavernModelRefusalNotice(text) {
 		function installTavernFrameTouch(token, scrollChain) {
 		    const view = { document, getComputedStyle: node => getComputedStyle(node) };
 		    let gesture = null, animation = 0, sequence = 0;
-		    const send = (type, extra) => parent.postMessage(Object.assign({ type, token, sequence }, extra), '*');
+		    // A detached frame loses window.parent; a relay from then on has no reader.
+		    const send = (type, extra) => {
+		        const host = window.parent;
+		        if (host && typeof host.postMessage === 'function') host.postMessage(Object.assign({ type, token, sequence }, extra), '*');
+		    };
 		    function stop() {
 		        gesture = null;
 		        if (animation) cancelAnimationFrame(animation);
@@ -7452,9 +7479,16 @@ function bindTavernFontZoom(node, win) {
         }
 
 		function tavernHelperScriptBootstrap(metadata, initialContext, modules) {
+            // Every page switch tears the frame down, and a detached frame loses
+            // window.parent; a report from then on has no reader and must not throw.
+            function postToHost(message, target) {
+                const host = window.parent;
+                if (!host || typeof host.postMessage !== "function") return false;
+                try { host.postMessage(message, target || "*"); return true; } catch (_) { return false; }
+            }
             modules.applyVariableReceipt.indexApi = modules.createIndexedArrayApi({valid: row => Boolean(row && !row.stub), eligible: row => Boolean(row?.variables?.stat_data !== undefined && row?.variables?.schema !== undefined)});
             modules.applyVariableReceipt.turnFields = modules.createTurnFieldIndex({createIndex:modules.createOrderedNumericIndex,visit:function(){}});
-            const initializationTiming = modules.createInitializationTiming({ report: function (timings) { parent.postMessage({ type: "dsh-tavern-mvu-load-diagnostic", token: metadata.token, diagnostic: { phase: "initialization-timing", timings: timings } }, "*"); } });
+            const initializationTiming = modules.createInitializationTiming({ report: function (timings) { postToHost({ type: "dsh-tavern-mvu-load-diagnostic", token: metadata.token, diagnostic: { phase: "initialization-timing", timings: timings } }, "*"); } });
             window.__dshTavernInitializationTiming = initializationTiming;
             window.addEventListener("pagehide", initializationTiming.dispose, { once: true });
 			try { void window.localStorage; }
@@ -7545,14 +7579,14 @@ function bindTavernFontZoom(node, win) {
                         if (known && known.receipt) { known.receipt = null; known.phase = "acknowledged"; }
                         return;
                     }
-                    function status() { parent.postMessage({ type: "dsh-tavern-helper-event-state", token: token, eventId: eventId, phase: hostEvents.get(eventId).phase }, "*"); }
+                    function status() { postToHost({ type: "dsh-tavern-helper-event-state", token: token, eventId: eventId, phase: hostEvents.get(eventId).phase }, "*"); }
                     if (known) {
                         status();
-                        if (known.receipt) parent.postMessage(known.receipt, "*");
+                        if (known.receipt) postToHost(known.receipt, "*");
                         return;
                     }
                     if (data.type === "dsh-tavern-helper-event-query") {
-                        parent.postMessage({ type: "dsh-tavern-helper-event-state", token: token, eventId: eventId, phase: "unknown" }, "*");
+                        postToHost({ type: "dsh-tavern-helper-event-state", token: token, eventId: eventId, phase: "unknown" }, "*");
                         return;
                     }
                     const entry = { phase: "queued", receipt: null };
@@ -7561,7 +7595,7 @@ function bindTavernFontZoom(node, win) {
                     function complete(receipt) {
                         entry.phase = "completed";
                         entry.receipt = Object.assign({ type: "dsh-tavern-helper-event-complete", token: token, eventId: eventId }, receipt);
-                        parent.postMessage(entry.receipt, "*");
+                        postToHost(entry.receipt, "*");
                     }
 					diagnosticCount = 0;
 					const suppliedArgs = copy(data.args || []);
@@ -7710,7 +7744,7 @@ function bindTavernFontZoom(node, win) {
 			}
 			function buttonEvent(name, scriptId) { return String(scriptId || currentScript().id) + "_" + stringHash(String(name || "")); }
 			function reportSubscriptions() {
-				parent.postMessage({
+				postToHost({
 					type: "dsh-tavern-helper-subscriptions",
 					token: token,
 					names: events.names(),
@@ -8127,7 +8161,7 @@ function bindTavernFontZoom(node, win) {
 			window.__dshTavernHelperSubscriptionsFailed = function (scriptId, error) {
 				const script = scriptsById[String(scriptId || currentScript().id)];
 				if (script) script.failed = true;
-				parent.postMessage({ type: "dsh-tavern-helper-script-runtime", token: token, scriptId: script && script.id || currentScript().id, level: "error", message: String(error && error.message || error || "人物卡脚本初始化失败"), moduleFailure: error && error.dshTavernModuleFailure || null }, "*");
+				postToHost({ type: "dsh-tavern-helper-script-runtime", token: token, scriptId: script && script.id || currentScript().id, level: "error", message: String(error && error.message || error || "人物卡脚本初始化失败"), moduleFailure: error && error.dshTavernModuleFailure || null }, "*");
 				reportSubscriptions();
 			};
 			window.tavern_events = {
@@ -8246,7 +8280,7 @@ function bindTavernFontZoom(node, win) {
 					try {
 						const message = Array.from(arguments).map(function (value) { return typeof value === "string" ? value : value && value.message || "[structured diagnostic omitted]"; }).join(" ").slice(0, 4000);
 						const failure = Array.from(arguments).find(value => value && value.dshTavernScriptId !== undefined);
-						parent.postMessage({ type: "dsh-tavern-helper-diagnostic", token: token, eventId: failure ? failure.dshTavernEventId : activeHostEventId, scriptId: failure ? failure.dshTavernScriptId : errorScriptId(Array.from(arguments).find(value => value && value.stack) || new Error()) || synchronousScriptId, level: level, message: message }, "*");
+						postToHost({ type: "dsh-tavern-helper-diagnostic", token: token, eventId: failure ? failure.dshTavernEventId : activeHostEventId, scriptId: failure ? failure.dshTavernScriptId : errorScriptId(Array.from(arguments).find(value => value && value.stack) || new Error()) || synchronousScriptId, level: level, message: message }, "*");
 					} catch (_) {}
 				};
 			}
@@ -8258,18 +8292,18 @@ function bindTavernFontZoom(node, win) {
 			]).then(function (modules) { window.z = modules[0]; window.YAML = modules[1]; return true; });
 			window.__dshTavernHelperReady = ready;
 			void ready.catch(function (error) {
-				parent.postMessage({ type: "dsh-tavern-helper-bootstrap-failed", token: token, message: String(error && error.message || error || "人物卡脚本依赖加载失败") }, "*");
+				postToHost({ type: "dsh-tavern-helper-bootstrap-failed", token: token, message: String(error && error.message || error || "人物卡脚本依赖加载失败") }, "*");
 			});
 			addEventListener("error", function (event) {
 				const target = event && event.target;
 				const resource = target && target !== window ? String(target.src || target.href || "") : "";
 				const message = event && event.message ? String(event.message) : (resource ? "资源加载失败: " + resource : "人物卡脚本加载失败");
-				parent.postMessage({ type: "dsh-tavern-helper-script-runtime", token: token, scriptId: errorScriptId(event.error, event.filename), level: "error", message: message }, "*");
+				postToHost({ type: "dsh-tavern-helper-script-runtime", token: token, scriptId: errorScriptId(event.error, event.filename), level: "error", message: message }, "*");
 			});
 			addEventListener("unhandledrejection", function (event) {
-				parent.postMessage({ type: "dsh-tavern-helper-script-runtime", token: token, scriptId: errorScriptId(event.reason), eventId: event.reason && event.reason.dshTavernEventId || "", method: event.reason && event.reason.dshTavernMethod || "", level: "error", message: String(event.reason && event.reason.message || event.reason || "人物卡脚本 Promise 失败") }, "*");
+				postToHost({ type: "dsh-tavern-helper-script-runtime", token: token, scriptId: errorScriptId(event.reason), eventId: event.reason && event.reason.dshTavernEventId || "", method: event.reason && event.reason.dshTavernMethod || "", level: "error", message: String(event.reason && event.reason.message || event.reason || "人物卡脚本 Promise 失败") }, "*");
 			});
-			parent.postMessage({ type: "dsh-tavern-helper-script-ready", token: token }, "*");
+			postToHost({ type: "dsh-tavern-helper-script-ready", token: token }, "*");
 		}
 
 		// Only downloading is repeatable. Once evaluation starts, its effects are unknown.

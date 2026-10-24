@@ -137,7 +137,8 @@
 					const stale = Array.from(reads.values()).some(function (entry) { return JSON.stringify(read(optionFor(entry))) !== entry.value; });
 					if (!stale) return;
 					requested = true;
-					parent.postMessage({ type: "dsh-tavern-status-stale", token: token }, "*");
+					const host = window.parent;
+					if (host && typeof host.postMessage === "function") host.postMessage({ type: "dsh-tavern-status-stale", token: token }, "*");
 				}, 5000);
 			});
 		}
