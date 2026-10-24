@@ -116,6 +116,7 @@ test('global writes are compare-and-swap and preserve order and unknown fields',
   assert.deepEqual(result.global[1].placement, [1, 2])
   const saved = h.store.current().regex
   assert.equal(saved[0].extra, 1)
+  assert.equal(Object.prototype.hasOwnProperty.call(saved[0], 'enabled'), false)
   assert.equal(saved[0].scriptName, 'A')
   assert.equal(saved[1].scriptName, '新增')
   assert.equal(saved[1].trimStrings[0], '\n')
@@ -207,6 +208,10 @@ test('override maps are normalized and malformed entries are dropped', () => {
   assert.deepEqual(applyRegexOverrides(scripts, { c1: false, c2: true }, 'card').map(script => script.enabled), [false, true])
   assert.equal(scripts[0].enabled, true)
   assert.throws(() => storedRegexScript({ findRegex: '' }), /查找正则不能为空/)
+  const normalized = storedRegexScript({ name: 'x', findRegex: '/x/g', enabled: true }, { id: 'x', scriptName: 'x', findRegex: '/x/g', enabled: false, disabled: true, extra: 1 })
+  assert.equal(normalized.disabled, false)
+  assert.equal(Object.prototype.hasOwnProperty.call(normalized, 'enabled'), false)
+  assert.equal(normalized.extra, 1)
 })
 
 test('RPC handlers expose the manager without leaking storage details', async () => {

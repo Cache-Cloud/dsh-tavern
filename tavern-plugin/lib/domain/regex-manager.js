@@ -145,6 +145,7 @@ export function storedRegexScript(value, existing, nowId = randomUUID) {
     promptOnly: script.promptOnly === true,
     runOnEdit: script.runOnEdit === true
   }
+  delete next.enabled
   delete next.minDepth
   delete next.maxDepth
   if (minDepth !== null) next.minDepth = minDepth
