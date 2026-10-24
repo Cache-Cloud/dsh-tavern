@@ -68,23 +68,27 @@ function installOpeningPreviewBridge(token, preview) {
   window.getCharWorldbookNames = function () { return { primary: worldbook ? worldbook.name : null, additional: [] }; };
   window.getGlobalWorldbookNames = function () { return []; };
   window.getChatWorldbookName = function () { return null; };
-  window.getWorldbook = async function (name) {
-    if (preview.preparationId) {
-      const result = await request('dsh-tavern-opening-read', {});
-      worldbook = result.worldbook;
-    }
-    if (!worldbook || name !== worldbook.name) throw new Error('开场准备只能访问绑定的世界书');
-    return copy(worldbook.entries);
-  };
-  window.updateWorldbookWith = async function (name, updater) {
-    const previous = await window.getWorldbook(name);
-    const draft = copy(previous);
-    const updated = await updater(draft);
-    const entries = updated === undefined ? draft : updated;
-    const result = await request('dsh-tavern-opening-worldbook', { entries, expectedEntries: previous });
-    worldbook = copy(result.worldbook);
-    return copy(worldbook.entries);
-  };
+  // With the script runtime, its versioned reads and changed-entry writes reach the
+  // draft; these whole-draft round trips would move a large book several times per write.
+  if (!original) {
+    window.getWorldbook = async function (name) {
+      if (preview.preparationId) {
+        const result = await request('dsh-tavern-opening-read', {});
+        worldbook = result.worldbook;
+      }
+      if (!worldbook || name !== worldbook.name) throw new Error('开场准备只能访问绑定的世界书');
+      return copy(worldbook.entries);
+    };
+    window.updateWorldbookWith = async function (name, updater) {
+      const previous = await window.getWorldbook(name);
+      const draft = copy(previous);
+      const updated = await updater(draft);
+      const entries = updated === undefined ? draft : updated;
+      const result = await request('dsh-tavern-opening-worldbook', { entries, expectedEntries: previous });
+      worldbook = copy(result.worldbook);
+      return copy(worldbook.entries);
+    };
+  }
   window.TavernHelper = Object.assign({}, original && original.helper, { triggerSlash: window.triggerSlash, generate: window.generate, generateRaw: window.generateRaw, getCharWorldbookNames: window.getCharWorldbookNames, getGlobalWorldbookNames: window.getGlobalWorldbookNames, getChatWorldbookName: window.getChatWorldbookName,
     getWorldbook: window.getWorldbook, updateWorldbookWith: window.updateWorldbookWith });
   const chat = [{ is_user: false, name: preview.characterName || '', mes: swipes[selected], swipe_id: selected, swipes: swipes.slice() }];
