@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "revision": "24c70c2928bb55fbab31009ea896accbb95376bc",
-  "releaseSequence": 884,
+  "revision": "8e59dbe296145b83f6ab5e531792c02cfcc769dc",
+  "releaseSequence": 885,
   "version": "3.1.0",
   "files": [
     {
@@ -686,13 +686,13 @@
     },
     {
       "path": "tavern-plugin/lib/client-assets/tavern.css",
-      "sha256": "683b21cc393c7ed8616617e8326a1385a2b4f2b854bbd204f7c185a6b257c23e",
-      "size": 422589
+      "sha256": "9fc75f696b2289bd45e3d5dbc2b8bc9ae2bf24cb99b83acf2ab995568b025327",
+      "size": 426029
     },
     {
       "path": "tavern-plugin/lib/client.js",
-      "sha256": "3e715e1bcf2b330f1892f88aefc0d356b885f640dcaafc1a9a6e90e16f8af6b6",
-      "size": 2466632
+      "sha256": "c779bd01b1928643d3ad7e1cc40748cce7f4d1a5c55a76ddd50a2e205a1a2fc4",
+      "size": 2486544
     },
     {
       "path": "tavern-plugin/lib/cordis-inspect.js",
@@ -2416,8 +2416,8 @@
     },
     {
       "path": "tavern-plugin/lib/domain/tavern-settings.js",
-      "sha256": "2c2905e7869314e78dbebaf2eecdf4d4ff38d82c1c4e24c414f0015ca22dfb78",
-      "size": 25457
+      "sha256": "ceb508348ba8315b919d20f246dc8a549720392f69fd3cf6ac2b3421a7c2c393",
+      "size": 27150
     },
     {
       "path": "tavern-plugin/lib/domain/tavern-skill-provider.js",
@@ -2746,8 +2746,8 @@
     },
     {
       "path": "tavern-plugin/lib/rpc/settings.js",
-      "sha256": "91a06cb7542f536357fd74bdf27d2f3656fd893292d0c91d0695ec5b4f4f2adc",
-      "size": 7980
+      "sha256": "d61a700a3b130ba1c333e5783635313375d3a34f4b766aee6d7de9f11b6ec8b9",
+      "size": 8009
     },
     {
       "path": "tavern-plugin/lib/rpc/template.js",
@@ -4581,9 +4581,9 @@
     }
   ],
   "archive": {
-    "commit": "ee12f67b6ac7ebf3db0d514e00f5235a98c58697",
+    "commit": "3bd4141e1a71556c4a380d5cf80eb82eb36dcb10",
     "path": "runtime.zip",
-    "sha256": "81c4642719e73f3991610692f2d0942a64d5d548d50adb3791d3c92dbbe1ee1f",
-    "size": 10019630
+    "sha256": "6d98e97f48de5530c9ed04bc82f4b39e9120dcc439a0149da3e57c625771cd39",
+    "size": 10024775
   }
 }
