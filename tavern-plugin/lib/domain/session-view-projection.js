@@ -432,6 +432,13 @@ export function createSessionViewProjection({
         ? chat.runtimePresetSnapshot : null
       next.runtimePreset = activePresetSnapshot === null ? null : { id: activePresetSnapshot.presetPath, name: activePresetSnapshot.presetName }
       const presetRegexScripts = Array.isArray(activePresetSnapshot && activePresetSnapshot.regexScripts) ? activePresetSnapshot.regexScripts : []
+      // Rebuild the helper-visible regex list from fresh sources so resetting a
+      // conversation override cannot leave the previous (overridden) copy behind.
+      if (next.tavernHelper) next.tavernHelper.regexScripts = {
+        global: cardExtensions.globalRegexScripts || [],
+        preset: applyRegexOverrides(presetRegexScripts, chat.regexOverrides && chat.regexOverrides.preset, 'preset'),
+        character: cardExtensions.characterRegexScripts || []
+      }
       let replyDisplay = await requestPerformance.stage('historyProjection', () => incrementalReplyView.project(chat, {
         charName: chat.cardName, macroState: chat.macroState,
         regexScripts: composeTavernRegexScripts(cardExtensions, presetRegexScripts, chat.regexOverrides && chat.regexOverrides.preset),
