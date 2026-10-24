@@ -2397,6 +2397,35 @@ details.dsh-tavern-header-settings-group:not([open]) > :not(summary) { display: 
 .dsh-tavern-header-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding: 12px 0 14px; }
 .dsh-tavern-header-foot .dsh-tavern-settings-desc { max-width: 62%; }
 
+/* 自定义顶栏 › 顶部标签（对话/轨迹/完整上下文/画廊/精修对比） */
+.dsh-tavern-view-tabs { margin-top: 2px; padding-top: 14px; border-top: 1px solid var(--dsw-alias-border-l2); }
+.dsh-tavern-view-tabs > .dsh-tavern-settings-copy { padding: 0 0 10px; }
+.dsh-tavern-view-tab-list { list-style: none; display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0 0 12px; }
+.dsh-tavern-view-tab-row { display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 6px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 10px; background: var(--dsw-alias-bg-base); }
+.dsh-tavern-view-tab-row.is-dragging { opacity: .45; }
+.dsh-tavern-view-tab-grip { color: var(--dsw-alias-label-tertiary); letter-spacing: -1px; font-size: 13px; cursor: grab; user-select: none; }
+.dsh-tavern-view-tab-grip.is-locked { cursor: default; }
+.dsh-tavern-view-tab-name { flex: 1; min-width: 0; font-size: 13px; }
+.dsh-tavern-view-tab-name strong { display: block; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dsh-tavern-view-tab-name small { display: block; font-size: 11px; color: var(--dsw-alias-label-tertiary); }
+.dsh-tavern-view-tab-lock { flex: none; padding: 3px 8px; border-radius: 999px; background: var(--dsh-tavern-accent-soft); color: var(--dsh-tavern-accent); font-size: 11px; }
+.dsh-tavern-view-tab-ops { display: flex; gap: 2px; }
+.dsh-tavern-view-tab-op { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; font-size: 14px; line-height: 1; cursor: pointer; }
+.dsh-tavern-view-tab-op:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.dsh-tavern-view-tab-op:disabled { opacity: .3; cursor: default; }
+.dsh-tavern-view-tab-op.is-danger:hover:not(:disabled) { color: var(--dsh-tavern-accent-error); background: color-mix(in srgb, var(--dsh-tavern-accent-error) 12%, transparent); }
+.dsh-tavern-view-tab-catalog { padding: 12px 0 4px; border-top: 1px solid var(--dsw-alias-border-l2); }
+.dsh-tavern-view-tab-catalog > .dsh-tavern-settings-desc { margin-bottom: 10px; }
+.dsh-tavern-view-tab-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.dsh-tavern-view-tab-chip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px 5px 8px; border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px; background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-primary); font: inherit; font-size: 12.5px; cursor: pointer;
+}
+.dsh-tavern-view-tab-chip:hover:not(:disabled) { border-color: var(--dsh-tavern-accent-border); color: var(--dsh-tavern-accent); }
+.dsh-tavern-view-tab-chip-plus { color: var(--dsw-alias-label-tertiary); }
+.dsh-tavern-view-tab-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding: 12px 0 14px; }
+.dsh-tavern-view-tab-foot .dsh-tavern-settings-desc { max-width: 62%; }
+
 /* Scene image API card. */
 .dsh-tavern-global-settings .dsh-tavern-image-settings { gap: 12px; padding: 4px 0 16px; }
 .dsh-tavern-global-settings .dsh-tavern-image-settings label { font-size: 13px; }
@@ -3030,6 +3059,14 @@ body.dsh-tavern-shell-active [class*="_headerUtilities"]:has(.dsh-tavern-header-
   .dsh-tavern-card-picker > .dsh-tavern-greeting-preview:has(iframe) { height: calc(var(--dsh-vv-height, 100dvh) * .45); }
   .dsh-tavern-card-picker > .dsh-tavern-greeting-preview :is(.dsh-tavern-message-frame-slot, .dsh-tavern-message-frame) { min-height: 0; height: 100%; }
 
+}
+
+/* 窄屏手机上默认的 5 个视图标签要放得下：收紧标签间距，仍可左右滑动。 */
+@media (max-width: 430px) {
+  body.dsh-tavern-shell-active :is([data-phase] > header, [data-slot="conversation.header"] > header) [class*="_tabs"] { gap: 12px; }
+}
+@media (max-width: 380px) {
+  body.dsh-tavern-shell-active :is([data-phase] > header, [data-slot="conversation.header"] > header) [class*="_tabs"] { gap: 10px; }
 }
 
 @media (min-width: 1024px) and (pointer: coarse) {

@@ -89,6 +89,36 @@ export function readHeaderItems(value) {
   }
 }
 
+// Conversation view tabs: { items }, the row below the title (对话 / 轨迹 /
+// 完整上下文 / 画廊 / 精修对比). The host owns the chat view, so it is always
+// kept first and cannot be removed; the rest are an ordered visible list.
+export const VIEW_TAB_RESIDENT = 'chat'
+export const DEFAULT_VIEW_TABS = Object.freeze({ items: Object.freeze(['chat', 'trajectory', 'dsh-tavern:full-context', 'dsh-tavern:gallery', 'dsh-tavern:polish']) })
+
+export function viewTabs(value) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error('无效的顶部标签设置')
+  const source = value.items === undefined ? [] : value.items
+  if (!Array.isArray(source)) throw new Error('无效的顶部标签设置')
+  const items = []
+  for (const item of source) {
+    if (typeof item !== 'string' || !HEADER_ITEM_PATTERN.test(item)) throw new Error('无效的顶部标签设置')
+    if (!items.includes(item)) items.push(item)
+  }
+  const resident = items.indexOf(VIEW_TAB_RESIDENT)
+  if (resident > 0) items.splice(resident, 1)
+  if (resident !== 0) items.unshift(VIEW_TAB_RESIDENT)
+  return { items: items.slice(0, HEADER_ITEM_LIMIT) }
+}
+
+export function readViewTabs(value) {
+  if (value === null || value === undefined) return { items: [...DEFAULT_VIEW_TABS.items] }
+  try {
+    return viewTabs(value)
+  } catch (_) {
+    return { items: [...DEFAULT_VIEW_TABS.items] }
+  }
+}
+
 export function uniqueName(names, base) {
   const taken = new Set(names)
   if (!taken.has(base)) return base
@@ -269,6 +299,11 @@ export function applyTavernSettingsPatch(current, patch) {
     if (input.headerItems === null) delete next.headerItems
     else next.headerItems = headerItems(input.headerItems)
   }
+  if (Object.hasOwn(input, 'viewTabs')) {
+    // null restores the shipped tab row (all five tabs, 对话 first).
+    if (input.viewTabs === null) delete next.viewTabs
+    else next.viewTabs = viewTabs(input.viewTabs)
+  }
   if (Object.hasOwn(input, 'castPresentation')) {
     if (typeof input.castPresentation !== 'boolean') throw new Error('对话气泡设置必须是布尔值')
     next.castPresentation = input.castPresentation
@@ -378,6 +413,7 @@ export function presentTavernSettings(document, defaults) {
     contextCompaction: compactionPolicy(object(document).contextCompaction),
     hideContextAndReasoning: object(document).hideContextAndReasoning !== false,
     headerItems: readHeaderItems(object(document).headerItems),
+    viewTabs: readViewTabs(object(document).viewTabs),
     candidateDismissMode: object(document).candidateDismissMode === 'after-fill' ? 'after-fill' : 'after-send',
     // 精修预审: off by default, since it reviews every reply whether or not 精修 is pressed.
     polishPrereview: object(document).polishPrereview === true,
