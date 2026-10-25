@@ -67,9 +67,9 @@ export function createWebSearch({ getConfig, request, now = Date.now, timeoutMs 
       const config = readWebAccess(getConfig()), fingerprint = JSON.stringify(config)
       if (fingerprint !== lastConfig) { cache.clear(); cooldowns.clear(); lastConfig = fingerprint }
       const limit = Math.min(10, Math.max(1, Number.isSafeInteger(input.maxResults) ? input.maxResults : 8))
-      const query = input.query.trim(), key = JSON.stringify([query, limit])
+      const query = input.query.trim(), key = JSON.stringify([fingerprint, query, limit])
       const hit = cache.get(key)
-      if (hit && hit.expires > now()) return { ...structuredClone(hit.result), content: hit.result.content + '\n短期缓存命中；时间为原搜索时间。' }
+      if (hit && hit.expires > now()) return { ...structuredClone(hit.result), cacheHit: true, content: hit.result.content + '\n短期缓存命中；时间为原搜索时间。' }
       const deadline = AbortSignal.timeout(timeoutMs)
       const totalSignal = signal ? AbortSignal.any([signal, deadline]) : deadline
       const attempts = []
@@ -85,22 +85,22 @@ export function createWebSearch({ getConfig, request, now = Date.now, timeoutMs 
           const sources = normalizedSources(parseSearchResults(source, text, url))
           if (!sources.length) throw error('empty', '没有可用结果，或搜索源要求验证')
           attempts.push({ source, ok: true })
-          recent = attempts
+          if (lastConfig === fingerprint) recent = attempts
           const fetchedAt = new Date(now()).toISOString()
-          const result = { sources: sources.slice(0, limit), truncated: sources.length > limit,
+          const result = { sources: sources.slice(0, limit), truncated: sources.length > limit, retrievedAt: fetchedAt, cacheHit: false,
             content: `来源：${source}；搜索时间：${fetchedAt}。以下为搜索摘要，尚未核对网页原文。` + (attempts.length > 1 ? '\n已按配置回退搜索源。' : '') }
           // A fallback is useful immediately, but let the preferred source recover soon.
-          cache.set(key, { result: structuredClone(result), expires: now() + (attempts.length > 1 ? 30000 : 120000) })
+          if (lastConfig === fingerprint) cache.set(key, { result: structuredClone(result), expires: now() + (attempts.length > 1 ? 30000 : 120000) })
           if (cache.size > 100) cache.delete(cache.keys().next().value)
           return result
         } catch (cause) {
           signal?.throwIfAborted()
           const message = sourceSignal.aborted ? '请求超时' : cause.code ? cause.message : '返回内容无法解析'
           attempts.push({ source, ok: false, error: message })
-          if (['blocked', 'rate-limit'].includes(cause.code)) cooldowns.set(source, now() + 60000)
+          if (lastConfig === fingerprint && ['blocked', 'rate-limit'].includes(cause.code)) cooldowns.set(source, now() + 60000)
         }
       }
-      recent = attempts
+      if (lastConfig === fingerprint) recent = attempts
       throw error('SEARCH_UNAVAILABLE', '搜索失败：' + attempts.map(a => a.source + '（' + a.error + '）').join('；'))
     },
     diagnostics: () => ({ attempts: structuredClone(recent) })

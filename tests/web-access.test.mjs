@@ -91,7 +91,7 @@ test('真实 HTTP transport 限制响应大小、拒绝重定向、传递取消'
 })
 
 test('网页正文去除导航脚本，出处/时间/截断准确，错误状态不作为正文', async () => {
-  const result = { url: 'https://example.com/final', statusCode: 200, body: { kind: 'html', content: '<title>作品</title><nav>菜单</nav><article><p>设定正文</p><script>throw new Error("never run")</script><p>' + '长'.repeat(21000) + '</p></article>' }, truncated: false }
+  const result = { url: 'https://example.com/final', statusCode: 200, cacheHit: false, body: { kind: 'html', content: '<title>作品</title><nav>菜单</nav><article><p>设定正文</p><script>throw new Error("never run")</script><p>' + '长'.repeat(21000) + '</p></article>' }, truncated: false }
   const text = extractWebText(result)
   assert.equal(text.title, '作品'); assert.equal(text.content.length, 20000); assert.equal(text.truncated, true)
   assert.doesNotMatch(text.content, /菜单|never run/)
@@ -103,4 +103,22 @@ test('网页正文去除导航脚本，出处/时间/截断准确，错误状态
   const bad = createWebReader({ fetchPage: async () => ({ ...result, statusCode: 403 }) })
   await assert.rejects(bad('https://example.com'), /HTTP 403/)
   await assert.rejects(read('file:///etc/passwd'), /HTTP\(S\)/)
+})
+
+test('切换搜索配置时，旧请求晚到的结果不会污染新配置的缓存', async () => {
+  let config = { sources: ['bing'] }, release, calls = 0
+  const gate = new Promise(resolve => { release = resolve })
+  const search = createWebSearch({ getConfig: () => config, request: async url => {
+    calls++
+    if (url.includes('bing.com')) { await gate; return rss }
+    return html
+  } })
+  const old = search.search({ query: '作品' })
+  config = { sources: ['ddg'] }
+  const fresh = await search.search({ query: '作品' })
+  assert.match(fresh.content, /ddg/)
+  release(); await old
+  assert.match((await search.search({ query: '作品' })).content, /ddg/)
+  assert.equal(calls, 2)
+  assert.equal(search.diagnostics().attempts[0].source, 'ddg')
 })
