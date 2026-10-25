@@ -2305,6 +2305,12 @@ html.dsh-tavern-hide-process [data-chat-flow-kind="turn-process"]:has([data-turn
 .dsh-tavern-global-settings .dsh-tavern-settings-copy > strong { display: block; font-size: 13px; font-weight: 500; }
 .dsh-tavern-global-settings .dsh-tavern-settings-desc { display: block; margin: 3px 0 0; font-size: 12px; line-height: 1.55; color: var(--dsw-alias-label-tertiary); }
 
+/* Workbench search reuses the global cards, rows and switches. */
+.dsh-tavern-web-settings { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.dsh-tavern-global-settings .dsh-tavern-web-source { display: flex; flex: 1; flex-wrap: nowrap; justify-content: flex-start; gap: 10px; min-height: 0; padding: 0; }
+.dsh-tavern-web-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.dsh-tavern-web-save { justify-content: flex-end; }
+
 /* Controls: fixed width on the right. */
 .dsh-tavern-global-settings :is(.dsh-local-field, .dsh-tavern-compaction-field) > :is(select, input),
 .dsh-tavern-global-settings .dsh-tavern-settings-row > select {
