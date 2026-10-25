@@ -21935,6 +21935,77 @@ function createUpdateStatusController({ call, confirm, errors, browser, initial 
                     message ? h("div", { className: "dsh-tavern-settings-row", role: "status" }, h("span", { className: "dsh-tavern-settings-desc" }, message)) : null);
             }
 
+            function WebAccessSettings({ settings }) {
+                const h = React.createElement;
+                const [config, setConfig] = React.useState(settings.webAccess || { sources: ["bing", "ddg"], searxngUrl: "", searxngEngines: [], proxyUrl: "", sourceProxies: {}, fetchEnabled: false });
+                const [busy, setBusy] = React.useState(false), [notice, setNotice] = React.useState(""), [error, setError] = React.useState(""), [status, setStatus] = React.useState(null);
+                const labels = { bing: "Bing", ddg: "DuckDuckGo", searxng: "SearXNG" };
+                const [engines, setEngines] = React.useState(config.searxngEngines.join(","));
+                React.useEffect(() => {
+                    let live = true;
+                    rpc("getWebSearchStatus").then(value => { if (live) setStatus(value); }, err => { if (live) setError(err.message); });
+                    return () => { live = false; };
+                }, []);
+                const change = patch => setConfig(value => ({ ...value, ...patch }));
+                async function save(test) {
+                    setBusy(true); setError(""); setNotice("");
+                    try {
+                        const result = await rpc("updateTavernSettings", { patch: { webAccess: { ...config, searxngEngines: engines.split(",").map(v => v.trim()).filter(Boolean) } } });
+                        setConfig(result.settings.webAccess); notifySettingsChanged(); setNotice("联网资料设置已保存，后续调用生效。");
+                        if (test) {
+                            const checked = await rpc("testWebSearch");
+                            setNotice("已保存，内置搜索测试成功，返回 " + checked.count + " 条结果。");
+                        }
+                        setStatus(await rpc("getWebSearchStatus"));
+                    } catch (err) { setError(String(err.message || err)); }
+                    finally { setBusy(false); }
+                }
+                async function activate() {
+                    setBusy(true); setError("");
+                    try { setStatus(await rpc("useBuiltinWebSearch")); setNotice("已切换到内置搜索。"); }
+                    catch (err) { setError(String(err.message || err)); }
+                    finally { setBusy(false); }
+                }
+                function field(title, value, onChange, placeholder) {
+                    return h("label", { className: "dsh-local-field" }, title, h("input", { value, disabled: busy, placeholder, onChange: e => onChange(e.target.value) }));
+                }
+                function move(source, step) {
+                    const next = config.sources.slice(), at = next.indexOf(source), target = at + step;
+                    if (target < 0 || target >= next.length) return;
+                    [next[at], next[target]] = [next[target], next[at]]; change({ sources: next });
+                }
+                return h("div", { className: "dsh-local-settings", "aria-label": "联网资料设置" },
+                    h("p", { className: "dsh-local-help" }, "卡片工作台可搜索作品资料；游玩前台和后台仍需开启本局联网搜索。免费源可能限流，可配置备用源。"),
+                    status ? h("p", { role: "status" }, "当前搜索后端：" + (status.provider === "tavern-search" ? "酒馆内置搜索" : status.provider || "未选择"),
+                        status.provider !== "tavern-search" ? h("button", { type: "button", className: "dsh-tavern-btn", disabled: busy, onClick: activate }, "使用内置搜索") : null) : null,
+                    h("fieldset", { disabled: busy, className: "dsh-local-section" }, h("legend", null, "搜索源与回退顺序"),
+                        [...config.sources, ...Object.keys(labels).filter(source => !config.sources.includes(source))].map(source => {
+                            const at = config.sources.indexOf(source);
+                            return h("div", { key: source, className: "dsh-tavern-settings-row" },
+                                h("label", null, h("input", { type: "checkbox", checked: at >= 0, onChange: e => change({ sources: e.target.checked ? [...config.sources, source] : config.sources.filter(s => s !== source) }) }), " " + labels[source]),
+                                at >= 0 ? h("span", null,
+                                    h("button", { type: "button", className: "dsh-tavern-btn", "aria-label": labels[source] + "优先", disabled: busy || at === 0, onClick: () => move(source, -1) }, "上移"),
+                                    h("button", { type: "button", className: "dsh-tavern-btn", "aria-label": labels[source] + "后移", disabled: busy || at === config.sources.length - 1, onClick: () => move(source, 1) }, "下移")) : null);
+                        })),
+                    field("SearXNG 实例地址", config.searxngUrl, value => change({ searxngUrl: value }), "https://你的实例地址"),
+                    field("SearXNG 引擎（逗号分隔，留空使用实例默认）", engines, setEngines),
+                    h("label", { className: "dsh-tavern-settings-row" }, h("span", null, "允许读取网页正文"), h("input", { type: "checkbox", role: "switch", "aria-label": "允许读取网页正文", checked: config.fetchEnabled, disabled: busy, onChange: e => change({ fetchEnabled: e.target.checked }) })),
+                    h("p", { className: "dsh-local-help" }, "网页读取返回出处、抓取时间和截断状态。使用 DSH 的网页读取服务与代理设置；不自动启动浏览器。"),
+                    h("details", { className: "dsh-local-section" }, h("summary", null, "搜索代理（高级）"),
+                        field("默认搜索代理", config.proxyUrl, value => change({ proxyUrl: value }), "留空直连，例如 http://127.0.0.1:7890"),
+                        Object.keys(labels).map(source => h("div", { key: source },
+                            h("label", null, h("input", { type: "checkbox", disabled: busy, checked: Object.hasOwn(config.sourceProxies, source), onChange: e => {
+                                const proxies = { ...config.sourceProxies }; if (e.target.checked) proxies[source] = ""; else delete proxies[source]; change({ sourceProxies: proxies });
+                            } }), labels[source] + " 单独设置代理"),
+                            Object.hasOwn(config.sourceProxies, source) ? field(labels[source] + "代理地址", config.sourceProxies[source], value => change({ sourceProxies: { ...config.sourceProxies, [source]: value } }), "留空强制直连") : null))),
+                    h("div", { className: "dsh-tavern-settings-row" },
+                        h("button", { type: "button", className: "dsh-tavern-btn", disabled: busy, onClick: () => save(false) }, "保存联网资料设置"),
+                        h("button", { type: "button", className: "dsh-tavern-btn", disabled: busy, onClick: () => save(true) }, "保存并测试搜索")),
+                    notice ? h("p", { role: "status" }, notice) : null,
+                    error ? h("p", { role: "alert" }, error) : null,
+                    (status?.attempts || []).length ? h("p", { className: "dsh-local-help" }, "最近搜索：" + status.attempts.map(a => (labels[a.source] || a.source) + "：" + (a.ok ? "成功" : a.error)).join("；")) : null);
+            }
+
             function TavernSettingsSection() {
                 const [state, setState] = React.useState({ loading: true, busy: false, defaultForegroundModel: null, defaultBackgroundModel: null, defaultWorkbenchModel: null, notice: "", settings: null, modelCatalog: [], error: "" });
                 React.useEffect(function () {
@@ -21978,6 +22049,7 @@ function createUpdateStatusController({ call, confirm, errors, browser, initial 
                     // 对话气泡 (castPresentation) lives in 舞台设置 › 基础设置 with the other stage switches.
                     group("剧情", "所有游戏都按这些设置，下一轮生效。",
                         h(ContextCompactionSettings)),
+                    group("联网资料", "搜索源、网页读取和连接测试，对后续联网调用生效。", state.settings ? h(WebAccessSettings, { settings: state.settings }) : null),
                     group("显示与交互", "对所有游戏生效，只改界面，不影响正文和存档。",
                         state.settings ? h(SettingSwitch, { settings: state.settings, name: "autoOpenStatusPanel", title: "进入游戏时打开酒馆状态",
                             description: "进入或切换到一局游戏时，右侧面板自动展开并显示本局设置和酒馆状态。关闭后右侧面板保持你上次的样子。" }) : null,

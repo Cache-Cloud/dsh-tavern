@@ -1,4 +1,5 @@
 import { compactionPolicy } from './auto-compaction.js'
+import { readWebAccess, validateWebAccess } from './web-access-settings.js'
 import { normalizeBackgroundModel } from './background-model-selection.js'
 import { applyCardPersonaChange, presentCardPersonas } from './card-personas.js'
 import { readJudgeConfig, validateJudgeConfig } from './engine-judge.js'
@@ -226,6 +227,10 @@ export function normalizePlayDefaults(value) {
 export function applyTavernSettingsPatch(current, patch) {
   const next = Object.assign({}, object(current))
   const input = object(patch)
+  if (Object.hasOwn(input, 'webAccess')) {
+    if (!input.webAccess || typeof input.webAccess !== 'object' || Array.isArray(input.webAccess)) throw new Error('联网资料设置无效')
+    next.webAccess = validateWebAccess({ ...readWebAccess(next.webAccess), ...input.webAccess })
+  }
   if (Object.hasOwn(input, 'defaultPlaySettings')) {
     const patch = object(input.defaultPlaySettings)
     if (Object.hasOwn(patch, 'webSearchEnabled') && typeof patch.webSearchEnabled !== 'boolean') throw new Error('默认开关必须为布尔值')
@@ -407,6 +412,7 @@ export function presentTavernSettings(document, defaults) {
   const storyToolCalls = storyToolCallSettings(document)
   return {
     defaultPlaySettings: normalizePlayDefaults(object(document).defaultPlaySettings),
+    webAccess: readWebAccess(object(document).webAccess),
     defaultDisabledWritingSkills: Array.isArray(object(document).defaultDisabledWritingSkills) ? object(document).defaultDisabledWritingSkills.filter(name => typeof name === 'string') : [],
     defaultForegroundModel: normalizeBackgroundModel(object(document).defaultForegroundModel),
     defaultBackgroundModel: normalizeBackgroundModel(object(document).defaultBackgroundModel),
