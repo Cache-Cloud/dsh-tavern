@@ -156,13 +156,19 @@ export function registerTavernHttpRoutes({
           return
         }
         const readsCachedAsset = req.method === 'GET' && cachedAssetMatch
-        const localOrOpaqueOrigin = origin === undefined || origin === '' || origin === 'null' || /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin)
+        // 反向代理 / 隧道（Cloudflare Tunnel、nginx 等）下，浏览器发出的 Origin
+        // 是公网域名，永远不会是 loopback；只有 Origin 与本次请求的 Host 完全
+        // 同源时，它才属于本站自己的页面。把它和 loopback 形式并列视为合法来源，
+        // 跨站 Origin 仍然会被拒绝。
+        const sameHostOrigin = typeof origin === 'string' && origin !== ''
+          && (origin === 'http://' + req.headers.host || origin === 'https://' + req.headers.host)
+        const localOrOpaqueOrigin = origin === undefined || origin === '' || origin === 'null' || sameHostOrigin || /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin)
         if (readsStaticAsset && !localOrOpaqueOrigin) {
           res.writeHead(403)
           res.end('forbidden')
           return
         }
-        if (!readsCachedAsset && !readsStaticAsset && !readsOfficialMvu && !readsFullTemplate && !readsRuntimeAsset && !readsClientAsset && !readsPluginAsset && !sceneSameOrigin && typeof origin === 'string' && origin !== '' && !/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin)) {
+        if (!readsCachedAsset && !readsStaticAsset && !readsOfficialMvu && !readsFullTemplate && !readsRuntimeAsset && !readsClientAsset && !readsPluginAsset && !sceneSameOrigin && typeof origin === 'string' && origin !== '' && origin !== 'null' && !sameHostOrigin && !/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin)) {
           res.writeHead(403)
           res.end('forbidden')
           return
