@@ -18,7 +18,7 @@ export function createWorkbenchResearch({ search, readPage, canFetch, now = Date
     for (let i = 0; i < outcomes.length; i++) {
       const outcome = outcomes[i]
       if (outcome.status === 'rejected') {
-        searches.push({ query: queries[i], status: 'failed', reason: combined.aborted ? '研究时间预算已用完' : '搜索失败，请查看联网资料设置中的诊断' })
+        searches.push({ query: queries[i], status: 'failed', reason: combined.aborted ? '研究时间预算已用完' : '搜索失败，请查看卡片工作台搜索设置中的诊断' })
         continue
       }
       const result = outcome.value

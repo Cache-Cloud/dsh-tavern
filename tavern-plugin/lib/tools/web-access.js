@@ -18,7 +18,7 @@ export function installWebAccess({ ctx, getConfig }) {
     const current = web.config.searchProvider.get() ?? process.env.DSH_WEB_SEARCH_PROVIDER
     // Keep a deliberately selected third-party provider. The settings page can
     // explicitly switch back, and also reports which backend is actually active.
-    if (!current || current === 'deepseek-official') void useBuiltin().catch(() => console.warn('dsh-tavern: 内置搜索未能自动启用，可在联网资料设置中重试'))
+    if (!current || current === 'deepseek-official') void useBuiltin().catch(() => console.warn('dsh-tavern: 内置搜索未能自动启用，可在卡片工作台搜索设置中重试'))
   })
   if (!ctx.tools.get('web_fetch')) {
     const read = createWebReader({ fetchPage: (request, signal) => {

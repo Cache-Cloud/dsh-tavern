@@ -17,7 +17,7 @@ export function createNetworkToolPolicy({ readHeader, backgroundContext, capabil
   function reason(name, state, config) {
     const kind = capability(name)
     if (!kind || !state) return undefined
-    if (kind === 'fetch' && config.fetchEnabled !== true) return '网页读取已关闭，请在全局设置 → 联网资料中开启。'
+    if (kind === 'fetch' && config.fetchEnabled !== true) return '网页读取已关闭，请在全局设置 → 卡片工作台搜索中开启。'
     if (!state.allowed || (state.chat.mode !== 'card' && state.chat.webSearchEnabled !== true)) return '本局联网搜索已关闭，请在本局设置中开启。'
     if (!state.background && state.chat.mode !== 'card' && state.chat.disabledForegroundTools?.includes(name)) return '该工具已在本局的前台工具设置中关闭。'
     return undefined
