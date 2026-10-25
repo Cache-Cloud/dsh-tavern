@@ -1,5 +1,6 @@
 // Must stay first: it has to run before anything loads jsdom.
 import { createSessionViewProjection } from './domain/session-view-projection.js'
+import { createNetworkToolPolicy, installNetworkToolPolicy } from './domain/network-tools.js'
 import { createConversationBackgroundSettings } from './domain/conversation-background-settings.js'
 import { createChatWrites } from './domain/chat-writes.js'
 import { upgradeReferences, upgradedAnchor } from './domain/session-upgrade-references.js'
@@ -3634,6 +3635,13 @@ export async function apply(ctx) {
     sessionStore,
     tavernRetryLimiter,
   })
+
+  installNetworkToolPolicy(ctx, createNetworkToolPolicy({
+    readHeader: chatHeaderForSession,
+    backgroundContext: id => backgroundAgentRunner.requestContext(id),
+    capabilityFor: name => pluginApi.toolNetworkFor(name),
+    settings: () => tavernSettingsDocument.webAccess || {}
+  }))
 
   registerModelStreamHooks({
     agentRegistry,
