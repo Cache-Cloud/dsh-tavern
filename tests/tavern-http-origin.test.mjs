@@ -69,8 +69,73 @@ test('跨站 Origin 仍然被拒绝，放行范围没有被放宽', async () => 
   }
 })
 
-test('Origin 协议与 Host 不匹配时仍拒绝（http/https 不能互相冒充）', async () => {
+test('Origin 端口与 Host 不匹配时仍拒绝', async () => {
   const handler = handle()
   const res = await call(handler, { host: PUBLIC, origin: `https://${PUBLIC}:8443` })
   assert.equal(res.status, 403, '端口不同不算同源')
+})
+
+test('代理终止 TLS 时同 Host 的 HTTP / HTTPS 都可通过来源检查，null 不可通过', async () => {
+  for (const scheme of ['http', 'https']) {
+    assert.equal((await call(handle(), { host: PUBLIC, origin: `${scheme}://${PUBLIC}` })).status, 200)
+  }
+  assert.equal((await call(handle(), { host: PUBLIC, origin: 'null' })).status, 403)
+  assert.equal((await call(handle(), { host: '127.0.0.1:3081', origin: `https://${PUBLIC}` })).status, 403)
+})
+
+function externalRoutes(connection) {
+  let external, internal, calls = 0
+  const webServer = { register(route) { external = route.handler; return () => {} } }
+  registerTavernHttpRoutes({
+    ctx: { get: name => ({ webServer, connection })[name], effect: fn => fn() },
+    performanceDiagnostics: { http() {} }, runtimeReadiness: { ok: true }, runtimeGeneration: 1,
+    dispatch: async () => { calls++; return {} }, str: String,
+    sessionResources: { read: async cap => { if (cap !== 'valid') throw Error('denied'); return '{}' } },
+    exposeHandler: fn => { internal = fn },
+  })
+  return { external, internal, calls: () => calls }
+}
+
+async function operation(handler, headers = {}, url = '/api/dsh-tavern/changeSetting') {
+  const res = capture()
+  await handler({ method: 'POST', url, headers: { host: PUBLIC, ...headers },
+    async *[Symbol.asyncIterator]() { yield Buffer.from('{}') }
+  }, res)
+  return res
+}
+
+test('HTTP 操作遵守 DSH 登录和可信 Host 拒绝结果，鉴权前不派发操作', async () => {
+  let rejection = 401, checked
+  const routes = externalRoutes({ requestRejection(req) { checked = req; return rejection } })
+  for (const origin of [undefined, `https://${PUBLIC}`]) {
+    const res = await operation(routes.external, origin ? { origin } : {})
+    assert.equal(res.status, 401)
+    assert.equal(routes.calls(), 0)
+    assert.equal(checked.headers.host, PUBLIC)
+  }
+  rejection = 403
+  assert.equal((await operation(routes.external)).status, 403)
+  assert.equal(routes.calls(), 0)
+  rejection = undefined
+  assert.equal((await operation(routes.external, { origin: `https://${PUBLIC}`, cookie: 'host-session' })).status, 200)
+  assert.equal(checked.headers.cookie, 'host-session')
+  assert.equal(routes.calls(), 1)
+  assert.equal((await operation(routes.external, { origin: 'null' })).status, 403)
+  assert.equal(routes.calls(), 1)
+})
+
+test('鉴权服务缺失时 HTTP 失败关闭，进程内调用保持独立', async () => {
+  const routes = externalRoutes(undefined)
+  assert.equal((await operation(routes.external)).status, 503)
+  assert.equal(routes.calls(), 0)
+  assert.equal((await operation(routes.internal)).status, 200)
+  assert.equal(routes.calls(), 1)
+})
+
+test('沙箱资源仍凭能力票据访问，不要求主页面登录 Cookie', async () => {
+  const routes = externalRoutes({ requestRejection: () => { throw Error('must not check session') } })
+  for (const [cap, expected] of [['valid', 200], ['invalid', 403]]) {
+    assert.equal((await call(routes.external, { host: PUBLIC, origin: 'null', url: `/api/dsh-tavern/session-resource?cap=${cap}` })).status, expected)
+  }
+  assert.equal(routes.calls(), 0)
 })
